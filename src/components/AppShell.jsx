@@ -129,6 +129,8 @@ export default function AppShell({ mode = 'light', setMode }) {
         ))}
       </List>
 
+      {app && (
+        <>
       <Button
         fullWidth
         variant="outlined"
@@ -165,6 +167,8 @@ export default function AppShell({ mode = 'light', setMode }) {
         <Typography variant="caption" component="div" color="text.secondary" sx={{ mt: 1 }}>
           ربط ملف النسخة الاحتياطية غير مدعوم في هذا المتصفح
         </Typography>
+      )}
+        </>
       )}
 
       <Box sx={{ mt: 'auto', pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
