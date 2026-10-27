@@ -1,0 +1,1 @@
+import {Alert,Box,Typography} from '@mui/material';export default()=> <Box sx={{p:5,maxWidth:800,m:'auto'}}><Typography variant="h4" mb={2}>إعداد الاتصال مطلوب</Typography><Alert severity="warning">اضبط VITE_SUPABASE_URL وVITE_SUPABASE_ANON_KEY في أسرار بيئة البناء، ثم شغّل ترحيلات Supabase بالترتيب الموثق في README.</Alert></Box>;
