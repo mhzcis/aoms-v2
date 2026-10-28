@@ -78,7 +78,8 @@ async function main() {
   const mkCat = (o) => one(admin, `insert into public.categories (name, code_prefix, uses_meter, meter_unit, supports_fuel, default_fuel_rate, fuel_unit, supports_chlorine, default_chlorine_consumption, chlorine_unit)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
     [o.name, o.prefix, !!o.meter, o.meter ? 'ساعة تشغيل' : null, !!o.fuel, o.rate ?? null, o.fuel ? 'لتر' : null, !!o.chl, o.chlRate ?? null, o.chl ? 'كغم' : null]);
-  const mkAsset = async (catId, extra = {}) => (await rpc(admin, 'create_asset', [JSON.stringify({ category_id: catId, name: extra.name || 'أصل', ...extra }), '{}'])).r;
+  // single-tank rule (migration 005): every asset gets one tank; create_asset ignores it for non-fuel categories
+  const mkAsset = async (catId, extra = {}) => (await rpc(admin, 'create_asset', [JSON.stringify({ category_id: catId, name: extra.name || 'أصل', fuel_type_id: ft1.id, ...extra }), '{}'])).r;
   const getAsset = id => one(su, `select * from public.assets where id=$1`, [id]);
   const fuelBal = async (a, ft) => Number((await one(su, `select coalesce((select balance from public.asset_fuel_balances where asset_id=$1 and fuel_type_id=$2),0) b`, [a, ft])).b);
   const chlBal = async a => Number((await one(su, `select coalesce((select balance from public.asset_chlorine_balances where asset_id=$1),0) b`, [a])).b);
@@ -387,24 +388,24 @@ async function main() {
 
   // ---------------- fuel ----------------
   const fa1 = await mkAsset(gen.id, { name: 'وقود 1' });
-  const fa2 = await mkAsset(gen.id, { name: 'وقود 2' });
+  const fa2 = await mkAsset(gen.id, { name: 'وقود 2', fuel_type_id: ft2.id });
   await check('FUEL-012', 'supplier is free text and invoice number is optional', async () => {
     const t = await saveFuel(operator, { asset_id: fa1.id, fuel_type_id: ft1.id, transaction_date: day(9), transaction_type: 'supply', quantity: 100, supplier: 'مورد حر 123 — أي نص' });
     assert(t.supplier === 'مورد حر 123 — أي نص' && t.invoice_number === null, JSON.stringify(t));
     return 'saved without invoice';
   });
-  await check('FUEL-009', 'fuel balance is separate per asset and per fuel type', async () => {
-    await saveFuel(operator, { asset_id: fa1.id, fuel_type_id: ft2.id, transaction_date: day(9), transaction_type: 'supply', quantity: 40 });
-    await saveFuel(operator, { asset_id: fa2.id, fuel_type_id: ft1.id, transaction_date: day(9), transaction_type: 'supply', quantity: 7 });
+  await check('FUEL-009', 'one tank per asset: balance is per asset tank; a second fuel type on the same asset is rejected', async () => {
+    const r = await rejects(saveFuel(operator, { asset_id: fa1.id, fuel_type_id: ft2.id, transaction_date: day(9), transaction_type: 'supply', quantity: 40 }), /خزان/);
+    await saveFuel(operator, { asset_id: fa2.id, fuel_type_id: ft2.id, transaction_date: day(9), transaction_type: 'supply', quantity: 40 });
     const b = [await fuelBal(fa1.id, ft1.id), await fuelBal(fa1.id, ft2.id), await fuelBal(fa2.id, ft1.id), await fuelBal(fa2.id, ft2.id)];
-    assert(JSON.stringify(b) === '[100,40,7,0]', JSON.stringify(b));
-    return 'a1/diesel 100, a1/petrol 40, a2/diesel 7, a2/petrol 0';
+    assert(JSON.stringify(b) === '[100,0,0,40]', JSON.stringify(b));
+    return 'a1 tank diesel 100, a2 tank petrol 40; ' + r.slice(0, 40);
   });
   await check('FUEL-002', 'inactive fuel type is rejected for new transactions; old transactions kept', async () => {
     await admin.query(`update public.fuel_types set status='inactive' where id=$1`, [ft2.id]);
     const r = await rejects(saveFuel(operator, { asset_id: fa2.id, fuel_type_id: ft2.id, transaction_date: day(8), transaction_type: 'supply', quantity: 1 }), /غير نشط|غير صالح/);
     const kept = Number((await one(viewer, `select count(*) n from public.fuel_transactions where fuel_type_id=$1`, [ft2.id])).n);
-    assert(kept === 1 && (await fuelBal(fa1.id, ft2.id)) === 40, `kept ${kept}`);
+    assert(kept === 1 && (await fuelBal(fa2.id, ft2.id)) === 40, `kept ${kept}`);
     await admin.query(`update public.fuel_types set status='active' where id=$1`, [ft2.id]);
     return r.slice(0, 50) + ` / ${kept} old tx + balance 40 kept`;
   });
@@ -424,8 +425,8 @@ async function main() {
     return 'non-fuel category and inactive asset both rejected';
   });
   await check('FUEL-006', 'quantity must be > 0 (0 and negative rejected)', async () => {
-    await rejects(saveFuel(operator, { asset_id: fa2.id, fuel_type_id: ft1.id, transaction_date: day(1), transaction_type: 'supply', quantity: 0 }), /موجب/);
-    await rejects(saveFuel(operator, { asset_id: fa2.id, fuel_type_id: ft1.id, transaction_date: day(1), transaction_type: 'supply', quantity: -3 }), /موجب/);
+    await rejects(saveFuel(operator, { asset_id: fa2.id, fuel_type_id: ft2.id, transaction_date: day(1), transaction_type: 'supply', quantity: 0 }), /موجب/);
+    await rejects(saveFuel(operator, { asset_id: fa2.id, fuel_type_id: ft2.id, transaction_date: day(1), transaction_type: 'supply', quantity: -3 }), /موجب/);
     await rejects(admin.query(`update public.fuel_transactions set quantity=0 where asset_id=$1`, [fa2.id]));
     return '0, -3 rejected by RPC; direct UPDATE rejected';
   });
@@ -442,6 +443,7 @@ async function main() {
     return 'balance 150 → 120 (edit) → 100 (delete)';
   });
   await check('FUEL-010', 'only the last fuel transaction can be edited/deleted', async () => {
+    await saveFuel(operator, { asset_id: fa1.id, fuel_type_id: ft1.id, transaction_date: day(1), transaction_type: 'supply', quantity: 5 }); // single tank: make sure fa1 has a later tx
     const first = await one(su, `select * from public.fuel_transactions where asset_id=$1 order by transaction_date asc, created_at asc limit 1`, [fa1.id]);
     await rejects(saveFuel(operator, { id: first.id, version: first.version, fuel_type_id: ft1.id, transaction_date: first.transaction_date, transaction_type: 'supply', quantity: 99 }), /آخر/);
     await rejects(rpc(operator, 'delete_fuel_transaction', [first.id, first.version]), /آخر/);
@@ -492,9 +494,78 @@ async function main() {
     return `${r.rows.length} columns, none monetary`;
   });
 
+  // ---------------- migration 005: single tank, pump capacity, pump→tanker ----------------
+  await check('TANK-001', 'the tank fuel type cannot change once the tank has transactions', async () =>
+    rejects(rpc(admin, 'update_asset', [fa1.id, (await getAsset(fa1.id)).version, JSON.stringify({ fuel_type_id: ft2.id }), '{}']), /تغيير نوع وقود الخزان/));
+  await check('TANK-002', 'asset "بدون وقود": no refill accepted and logs consume nothing', async () => {
+    const nf = await mkAsset(gen.id, { name: 'بلا وقود', fuel_type_id: '' });
+    assert(nf.fuel_type_id === null, 'tank stored');
+    const r = await rejects(saveFuel(operator, { asset_id: nf.id, fuel_type_id: ft1.id, transaction_date: day(3), transaction_type: 'supply', quantity: 5 }), /بلا خزان/);
+    const l = await saveLog(operator, { asset_id: nf.id, operation_date: day(3), previous_reading: 0, current_reading: 7 });
+    assert(Number(l.fuel_consumed) === 0 && l.fuel_type_id === null, JSON.stringify({ f: l.fuel_consumed, t: l.fuel_type_id }));
+    return r.slice(0, 40) + ' / log fuel 0';
+  });
+  await check('TANK-003', 'a fuel type linked to an asset tank cannot be deleted', async () => {
+    const ft3 = await one(su, `insert into public.fuel_types (name, unit) values ('خزان مرتبط','لتر') returning *`);
+    await mkAsset(gen.id, { name: 'خزان ft3', fuel_type_id: ft3.id });
+    return rejects(su.query(`delete from public.fuel_types where id=$1`, [ft3.id]), /مرتبط بخزان/);
+  });
+  await check('TANK-004', 'asset_fuel_tanks: one row per tank, balance = refills ± adjustments − consumption', async () => {
+    const t = (await su.query(`select * from public.asset_fuel_tanks where asset_id=$1`, [fa1.id])).rows;
+    assert(t.length === 1 && t[0].fuel_type_id === ft1.id, JSON.stringify(t));
+    const legacy = await fuelBal(fa1.id, ft1.id);
+    assert(Number(t[0].balance) === legacy, `${t[0].balance} vs ${legacy}`);
+    return `balance ${t[0].balance}`;
+  });
+  const pumpCat = await one(admin, `insert into public.categories (name, code_prefix, uses_meter, meter_unit, supports_fuel, default_fuel_rate, fuel_unit, asset_kind)
+     values ('مضخات مياه قبول','PWA',true,'ساعة تشغيل',true,3,'لتر','pump') returning *`);
+  const tankerCat = await one(admin, `insert into public.categories (name, code_prefix, uses_meter, supports_fuel, asset_kind)
+     values ('صهاريج قبول','TWA',false,false,'tanker') returning *`);
+  const T1 = await mkAsset(tankerCat.id, { name: 'صهريج قبول 1' });
+  const T2 = await mkAsset(tankerCat.id, { name: 'صهريج قبول 2' });
+  await check('PUMP-001', 'pump capacity is required and must be > 0', async () => {
+    await rejects(mkAsset(pumpCat.id, { name: 'مضخة بلا قدرة' }), /قدرة المضخة/);
+    return rejects(mkAsset(pumpCat.id, { name: 'مضخة صفر', pump_capacity: 0 }), /قدرة المضخة|pump_capacity/);
+  });
+  const P = await mkAsset(pumpCat.id, { name: 'مضخة قبول', pump_capacity: 80, default_tanker_id: T1.id });
+  await saveFuel(operator, { asset_id: P.id, fuel_type_id: ft1.id, transaction_date: day(8), transaction_type: 'supply', quantity: 1000 });
+  let PL1;
+  await check('PUMP-002', 'water = hours × capacity, snapshot stored, default tanker, network = total − distributed (0)', async () => {
+    PL1 = await saveLog(operator, { asset_id: P.id, operation_date: day(7), previous_reading: 0, current_reading: 5 });
+    const ok = Number(PL1.pump_capacity_snapshot) === 80 && Number(PL1.water_total) === 400 && PL1.tanker_id === T1.id &&
+      Number(PL1.trips_count) === 0 && Number(PL1.distributed_quantity) === 0 && Number(PL1.network_quantity) === 400 &&
+      Number(PL1.fuel_consumed) === 15 && PL1.fuel_type_id === ft1.id;
+    assert(ok, JSON.stringify(PL1));
+    return 'water 400 m3, network 400, fuel 15 L';
+  });
+  await check('PUMP-003', 'distributed quantity above the water total is rejected', () =>
+    rejects(saveLog(operator, { asset_id: P.id, operation_date: day(6), current_reading: 7, tanker_id: T2.id, trips_count: 2, distributed_quantity: 161 }), /تتجاوز/));
+  await check('PUMP-004', 'tanker changeable per log; trips/distributed saved; capacity change keeps old snapshots', async () => {
+    const l = await saveLog(operator, { asset_id: P.id, operation_date: day(6), current_reading: 7, tanker_id: T2.id, trips_count: 2, distributed_quantity: 60 });
+    assert(l.tanker_id === T2.id && Number(l.water_total) === 160 && Number(l.network_quantity) === 100 && Number(l.trips_count) === 2, JSON.stringify(l));
+    await rpc(admin, 'update_asset', [P.id, (await getAsset(P.id)).version, JSON.stringify({ pump_capacity: 90 }), '{}']);
+    const old = await one(su, `select pump_capacity_snapshot, water_total from public.operation_logs where id=$1`, [PL1.id]);
+    assert(Number(old.pump_capacity_snapshot) === 80 && Number(old.water_total) === 400, JSON.stringify(old));
+    const e = await saveLog(operator, { id: l.id, version: l.version, operation_date: day(6), current_reading: 8, distributed_quantity: 60 });
+    assert(Number(e.pump_capacity_snapshot) === 80 && Number(e.water_total) === 240 && e.tanker_id === T2.id, JSON.stringify(e));
+    return 'per-log tanker T2, edit keeps snapshot 80';
+  });
+  await check('PUMP-005', 'trips/distributed without a tanker, or a non-tanker asset as tanker, are rejected', async () => {
+    const r1 = await rejects(saveLog(operator, { id: (await one(su, `select id from public.operation_logs where asset_id=$1 order by operation_date desc limit 1`, [P.id])).id,
+      operation_date: day(6), current_reading: 8, tanker_id: '', trips_count: 1, distributed_quantity: 10 }), /اختيار الصهريج/);
+    const r2 = await rejects(rpc(admin, 'update_asset', [P.id, (await getAsset(P.id)).version, JSON.stringify({ default_tanker_id: fa1.id }), '{}']), /صهريج/);
+    return r1.slice(0, 30) + ' / ' + r2.slice(0, 30);
+  });
+  await check('PUMP-006', 'database CHECK blocks distributed > total even outside the RPC', async () => {
+    const id = (await one(su, `select id from public.operation_logs where asset_id=$1 order by operation_date desc limit 1`, [P.id])).id;
+    return rejects(su.query(`update public.operation_logs set distributed_quantity = water_total + 1 where id=$1`, [id]), /operation_logs_water_chk|check/i);
+  });
+  await check('PUMP-007', 'category kind cannot change once the category has assets', () =>
+    rejects(admin.query(`update public.categories set asset_kind='general' where id=$1`, [pumpCat.id]), /نوع التصنيف/));
+
   // ---------------- search / timeline / backup ----------------
   await check('SEARCH-002', 'global search covers the six entity types', async () => {
-    await saveFuel(operator, { asset_id: fa2.id, fuel_type_id: ft1.id, transaction_date: day(1), transaction_type: 'supply', quantity: 1, notes: 'زقزوق-بحث' });
+    await saveFuel(operator, { asset_id: fa2.id, fuel_type_id: ft2.id, transaction_date: day(1), transaction_type: 'supply', quantity: 1, notes: 'زقزوق-بحث' });
     await saveChl(operator, { asset_id: ca.id, transaction_date: day(1), transaction_type: 'receipt', quantity: 1, notes: 'زقزوق-بحث' });
     const a = await mkAsset(tank.id, { name: 'أصل زقزوق-بحث' });
     await saveLog(operator, { asset_id: a.id, operation_date: day(1), notes: 'زقزوق-بحث' });

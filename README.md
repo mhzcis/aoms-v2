@@ -14,6 +14,7 @@
    - `supabase/migrations/202610260002_transactions_backup.sql`
    - `supabase/migrations/202610260003_audit_hardening.sql` (أُضيف في تدقيق 2026-10-27: إنشاء الملف الشخصي تلقائيًا، تثبيت `search_path`، حماية الأرصدة من السباق، إقفال الحقول، ذرية الاستعادة، النشر في `supabase_realtime` وغيرها)
    - `supabase/migrations/202610270004_field_select_options.sql` (الجولة 3: فرض FIELD-003 في قاعدة البيانات — حقل قائمة منسدلة نشط يجب أن يملك خيارًا نشطًا، ودالة `save_category_field` لحفظ الحقل وخياراته ذريًا)
+   - `supabase/migrations/202610290005_fuel_pump_tanker.sql` (2026-10-29، إضافي فقط: خزان وقود واحد لكل أصل عبر `assets.fuel_type_id` (لا جدول خزانات منفصل؛ «بدون وقود» = NULL)، وعرض `asset_fuel_tanks` للرصيد (تزويد + تسوية موجبة − تسوية سالبة − استهلاك آلي = ساعات التشغيل × استهلاك الوقود في الساعة من بطاقة الأصل)، و`categories.asset_kind` (عام/مضخة/صهريج)، و`assets.pump_capacity` (م³/ساعة، إلزامية > 0 للمضخات) و`assets.default_tanker_id`، وفي `operation_logs`: `pump_capacity_snapshot`, `water_total` = (القراءة الحالية − السابقة) × القدرة، `tanker_id`, `trips_count`, `distributed_quantity` (≤ الإجمالي، مفروض بقيد CHECK)، `network_quantity` = الإجمالي − الموزع؛ ومنع حذف نوع وقود مرتبط — استخدم التعطيل)
 3. أنشئ أول مستخدم من لوحة `Authentication > Users`، ثم أضف ملفه الشخصي كمدير للنظام:
    ينشئ المُشغِّل `on_auth_user_created_aoms` (الترحيل 003) ملفًا شخصيًا تلقائيًا بدور `viewer` وحالة `inactive`، لذا فعّل المدير الأول بتحديث الملف لا بإدراجه:
 ```sql

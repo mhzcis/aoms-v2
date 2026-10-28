@@ -60,6 +60,7 @@ export class AomsService {
     const clean = {
       name: String(payload.name).trim(),
       code_prefix: normalizePrefix(payload.code_prefix),
+      asset_kind: ['pump', 'tanker'].includes(payload.asset_kind) ? payload.asset_kind : 'general',
       description: payload.description || '',
       status: payload.status || 'active',
       uses_meter: Boolean(payload.uses_meter),

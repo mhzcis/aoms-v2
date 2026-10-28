@@ -2,7 +2,13 @@ import {
   BACKUP_MAX_BYTES,
   BACKUP_SCHEMA_VERSION,
   calculateChlorineBalance,
+  assetKind,
+  NO_FUEL_LABEL,
+  tankerLabel,
+  calcNetwork,
+  calcPumpWater,
   calculateFuelBalance,
+  validatePumpLog,
   canAdmin,
   canWrite,
   CHLORINE_TX_TYPES,
@@ -227,10 +233,15 @@ export class AomsEngine {
       const idx = this.state.categories.findIndex(c => c.id === input.id);
       const prev = this.state.categories[idx];
       this.checkVersion(prev, input.version);
+      const nextKind = input.asset_kind !== undefined ? assetKind({ asset_kind: input.asset_kind }) : assetKind(prev);
+      if (nextKind !== assetKind(prev) && this.state.assets.some(a => a.category_id === prev.id)) {
+        throw new Error('لا يمكن تغيير نوع التصنيف (عام/مضخة/صهريج) بعد إضافة أصول له');
+      }
       const updated = {
         ...prev,
         name: String(input.name).trim(),
         code_prefix: prefix,
+        asset_kind: nextKind,
         description: input.description ?? prev.description ?? '',
         status: input.status || prev.status || 'active',
         uses_meter: Boolean(input.uses_meter),
@@ -277,6 +288,7 @@ export class AomsEngine {
       id: uuid(),
       name: String(input.name).trim(),
       code_prefix: prefix,
+      asset_kind: assetKind({ asset_kind: input.asset_kind }),
       next_sequence: 1,
       description: input.description || '',
       status: input.status || 'active',
@@ -471,6 +483,48 @@ export class AomsEngine {
     }
   }
 
+  /**
+   * Single fuel tank per asset + pump capacity + default tanker (mirrors migration 005).
+   * Returns { fuel_type_id, pump_capacity, default_tanker_id } for the new/updated asset.
+   */
+  resolveTankAndPump(cat, payload, prev) {
+    const kind = assetKind(cat);
+    const has = k => payload[k] !== undefined;
+    let fuelTypeId = has('fuel_type_id') ? payload.fuel_type_id || null : prev ? prev.fuel_type_id || null : null;
+    if (!cat?.supports_fuel) fuelTypeId = prev ? prev.fuel_type_id || null : null;
+    if (fuelTypeId && fuelTypeId !== (prev?.fuel_type_id || null)) {
+      const ft = (this.state.fuel_types || []).find(f => f.id === fuelTypeId);
+      if (!ft || ft.status !== 'active') throw new Error('نوع الوقود غير موجود أو غير نشط');
+    }
+    if (prev && (prev.fuel_type_id || null) !== fuelTypeId) {
+      const used =
+        (this.state.fuel_transactions || []).some(t => t.asset_id === prev.id && t.fuel_type_id !== fuelTypeId) ||
+        (this.state.operation_logs || []).some(
+          l => l.asset_id === prev.id && Number(l.fuel_consumed || 0) > 0 && (l.fuel_type_id || null) !== fuelTypeId
+        );
+      if (used) throw new Error('لا يمكن تغيير نوع وقود الخزان أو إزالته بعد تسجيل حركات أو استهلاك عليه');
+    }
+    let pumpCapacity = prev ? prev.pump_capacity ?? null : null;
+    let defaultTanker = prev ? prev.default_tanker_id ?? null : null;
+    if (kind === 'pump') {
+      if (has('pump_capacity')) {
+        pumpCapacity = payload.pump_capacity === '' || payload.pump_capacity == null ? null : Number(payload.pump_capacity);
+      }
+      if (has('default_tanker_id')) defaultTanker = payload.default_tanker_id || null;
+      if (!prev || has('pump_capacity')) {
+        if (!(Number(pumpCapacity) > 0)) throw new Error('قدرة المضخة (م³/ساعة) مطلوبة ويجب أن تكون أكبر من صفر');
+      }
+      if (defaultTanker && defaultTanker !== (prev?.default_tanker_id || null)) {
+        const t = this.state.assets.find(a => a.id === defaultTanker);
+        const tc = t && this.state.categories.find(c => c.id === t.category_id);
+        if (!t || assetKind(tc) !== 'tanker' || t.status !== 'active' || t.id === prev?.id) {
+          throw new Error('الصهريج الافتراضي يجب أن يكون أصلًا نشطًا من تصنيف صهاريج');
+        }
+      }
+    }
+    return { fuel_type_id: fuelTypeId, pump_capacity: pumpCapacity, default_tanker_id: defaultTanker };
+  }
+
   async createAsset(payload, values = {}) {
     this.assertCanAdmin();
     const catIdx = this.state.categories.findIndex(c => c.id === payload.category_id);
@@ -486,6 +540,7 @@ export class AomsEngine {
       throw new Error('لا يمكن تعيين أصل غير نشط كأصل افتراضي');
     }
 
+    const tankFields = this.resolveTankAndPump(cat, payload, null);
     const activeFields = this.validateScopedDynamicValues(cat.id, 'asset', values);
     const seq = cat.next_sequence || 1;
     const code = formatAssetCode(cat.code_prefix, seq);
@@ -518,7 +573,7 @@ export class AomsEngine {
       longitude: payload.longitude !== '' && payload.longitude != null ? Number(payload.longitude) : null,
       status: payload.status || 'active',
       is_default: shouldBeDefault,
-      fuel_type_id: payload.fuel_type_id || null,
+      ...tankFields,
       has_fuel_rate_override: Boolean(payload.has_fuel_rate_override),
       fuel_rate_override:
         payload.has_fuel_rate_override &&
@@ -578,6 +633,8 @@ export class AomsEngine {
       throw new Error('رمز الأصل ثابت ولا يمكن تعديله بعد الإنشاء');
     }
 
+    const prevCat = this.state.categories.find(c => c.id === prev.category_id);
+    const tankFields = this.resolveTankAndPump(prevCat, payload, prev);
     const nextStatus = payload.status || prev.status;
     let nextDefault = payload.is_default !== undefined ? Boolean(payload.is_default) : prev.is_default;
     if (nextStatus === 'inactive') {
@@ -617,7 +674,7 @@ export class AomsEngine {
           : prev.longitude,
       status: nextStatus,
       is_default: nextDefault,
-      fuel_type_id: payload.fuel_type_id !== undefined ? payload.fuel_type_id || null : prev.fuel_type_id,
+      ...tankFields,
       has_fuel_rate_override:
         payload.has_fuel_rate_override !== undefined
           ? Boolean(payload.has_fuel_rate_override)
@@ -765,6 +822,45 @@ export class AomsEngine {
     return clone(created);
   }
 
+  /** Pump water / tanker distribution for one log (mirrors save_operation_log in migration 005). */
+  resolvePumpLog(asset, category, payload, existing, netDelta) {
+    const empty = {
+      pump_capacity_snapshot: null,
+      water_total: null,
+      tanker_id: null,
+      trips_count: 0,
+      distributed_quantity: 0,
+      network_quantity: null,
+    };
+    if (assetKind(category) !== 'pump') return empty;
+    const has = k => payload[k] !== undefined;
+    const cap = Number(existing?.pump_capacity_snapshot ?? asset.pump_capacity);
+    if (!(cap > 0)) throw new Error('قدرة المضخة غير محددة في بطاقة الأصل؛ أدخل قدرة المضخة (م³/ساعة) أولًا');
+    const water = calcPumpWater(0, Number(netDelta || 0), cap);
+    const tankerId = has('tanker_id') ? payload.tanker_id || null : existing ? existing.tanker_id || null : asset.default_tanker_id || null;
+    const trips = has('trips_count') && payload.trips_count !== '' ? Number(payload.trips_count) : Number(existing?.trips_count || 0);
+    const dist =
+      has('distributed_quantity') && payload.distributed_quantity !== ''
+        ? Number(payload.distributed_quantity)
+        : Number(existing?.distributed_quantity || 0);
+    const errs = validatePumpLog({ waterTotal: water, tripsCount: trips, distributed: dist, tankerId });
+    if (errs.length) throw new Error(errs[0]);
+    if (tankerId) {
+      const t = this.state.assets.find(a => a.id === tankerId);
+      const tc = t && this.state.categories.find(c => c.id === t.category_id);
+      if (!t || assetKind(tc) !== 'tanker') throw new Error('الصهريج المختار يجب أن يكون من تصنيف صهاريج');
+      if (t.status !== 'active' && tankerId !== existing?.tanker_id) throw new Error('لا يمكن اختيار صهريج غير نشط');
+    }
+    return {
+      pump_capacity_snapshot: cap,
+      water_total: water,
+      tanker_id: tankerId,
+      trips_count: trips,
+      distributed_quantity: dist,
+      network_quantity: calcNetwork(water, dist),
+    };
+  }
+
   async saveOperationLog(payload, values = {}) {
     this.assertCanWrite();
     const asset = this.state.assets.find(a => a.id === payload.asset_id);
@@ -863,7 +959,8 @@ export class AomsEngine {
     }
 
     let fuelConsumed = null;
-    if (category.supports_fuel) {
+    const tankId = asset.fuel_type_id || null; // single tank per asset (null = بدون وقود)
+    if (category.supports_fuel && tankId) {
       if (payload.fuel_consumed !== '' && payload.fuel_consumed != null) {
         fuelConsumed = Number(payload.fuel_consumed);
         if (Number.isNaN(fuelConsumed) || fuelConsumed < 0) throw new Error('كمية الوقود المستهلكة غير صالحة');
@@ -895,6 +992,8 @@ export class AomsEngine {
       }
     }
 
+    const pump = this.resolvePumpLog(asset, category, payload, existing, netDelta);
+
     const activeFields = this.validateScopedDynamicValues(category.id, 'operation_log', values);
     const ts = nowIso();
 
@@ -912,10 +1011,12 @@ export class AomsEngine {
         net_operation_delta: netDelta,
         meter_unit_snapshot: category.uses_meter ? category.meter_unit : null,
         fuel_consumed: fuelConsumed,
+        fuel_type_id: tankId,
         fuel_unit_snapshot: category.supports_fuel ? category.fuel_unit || 'لتر' : null,
         chlorine_consumed: chlorineConsumed,
         chlorine_unit_snapshot: category.supports_chlorine ? category.chlorine_unit || 'كجم' : null,
         residual_chlorine: residualChlorine,
+        ...pump,
         notes: payload.notes !== undefined ? payload.notes : existing.notes,
         edited: true,
         version: (existing.version || 1) + 1,
@@ -954,10 +1055,12 @@ export class AomsEngine {
       net_operation_delta: netDelta,
       meter_unit_snapshot: category.uses_meter ? category.meter_unit : null,
       fuel_consumed: fuelConsumed,
+      fuel_type_id: tankId,
       fuel_unit_snapshot: category.supports_fuel ? category.fuel_unit || 'لتر' : null,
       chlorine_consumed: chlorineConsumed,
       chlorine_unit_snapshot: category.supports_chlorine ? category.chlorine_unit || 'كجم' : null,
       residual_chlorine: residualChlorine,
+      ...pump,
       notes: payload.notes || '',
       edited: false,
       version: 1,
@@ -1035,6 +1138,8 @@ export class AomsEngine {
         if (!asset) throw new Error('الأصل غير موجود');
         const cat = this.state.categories.find(c => c.id === asset.category_id);
         if (!cat?.supports_fuel) throw new Error('هذا الأصل لا يدعم الوقود');
+        if (!asset.fuel_type_id) throw new Error('هذا الأصل بلا خزان وقود؛ حدّد نوع الوقود في بطاقة الأصل أولًا');
+        if (asset.fuel_type_id !== ft.id) throw new Error('نوع الوقود في الحركة يجب أن يطابق خزان الأصل (خزان واحد لكل أصل)');
         if (!editing && asset.status !== 'active') throw new Error('لا يمكن الصرف لأصل غير نشط');
       }
     }
@@ -1891,6 +1996,11 @@ export function buildAomsReport(state, filters = {}) {
           operator_name: op?.name || '—',
           record_type_label: l.record_type === 'meter_reset' ? 'تغيير عداد' : 'سجل يومي',
           status_label: isEdited(l) ? 'معدّل' : 'أصلي',
+          tanker_label: l.tanker_id ? tankerLabel((state.assets || []).find(a => a.id === l.tanker_id)) || '—' : '',
+          water_total: l.water_total ?? (assetKind(cat) === 'pump' ? 0 : ''),
+          trips_count: assetKind(cat) === 'pump' ? Number(l.trips_count || 0) : l.trips_count ?? '',
+          distributed_quantity: assetKind(cat) === 'pump' ? Number(l.distributed_quantity || 0) : l.distributed_quantity ?? '',
+          network_quantity: l.network_quantity ?? (assetKind(cat) === 'pump' ? Number(l.water_total || 0) : ''),
           ...dyn,
         };
       });
@@ -1977,7 +2087,11 @@ export function buildAomsReport(state, filters = {}) {
         return {
           ...a,
           category_name: cat?.name || '—',
-          fuel_type_name: ft?.name || '—',
+          fuel_type_name: ft?.name || (cat?.supports_fuel ? NO_FUEL_LABEL : '—'),
+          pump_capacity: a.pump_capacity ?? '',
+          default_tanker_label: a.default_tanker_id
+            ? tankerLabel((state.assets || []).find(x => x.id === a.default_tanker_id)) || '—'
+            : '',
           effective_fuel_rate: effectiveValue(a, cat, 'fuel_rate') ?? '—',
           effective_chlorine: effectiveValue(a, cat, 'chlorine_consumption') ?? '—',
           status_label: a.status === 'active' ? 'نشط' : 'غير نشط',
@@ -2052,9 +2166,15 @@ export function buildAomsReport(state, filters = {}) {
   let fuelTotal = 0;
   let chlorineTotal = 0;
   const chlorineByUnit = {};
+  let waterTotal = 0;
+  let waterDistributed = 0;
+  let waterNetwork = 0;
 
   if (type === 'operations') {
     for (const r of rows) {
+      waterTotal = roundNum(waterTotal + Number(r.water_total || 0));
+      waterDistributed = roundNum(waterDistributed + Number(r.distributed_quantity || 0));
+      waterNetwork = roundNum(waterNetwork + Number(r.network_quantity || 0));
       const unit = r.meter_unit_snapshot || 'بلا عداد';
       netByUnit[unit] = roundNum((netByUnit[unit] || 0) + Number(r.net_operation_delta || 0));
       fuelTotal = roundNum(fuelTotal + Number(r.fuel_consumed || 0));
@@ -2075,6 +2195,9 @@ export function buildAomsReport(state, filters = {}) {
     chlorine_consumed_total: chlorineTotal,
     totalChlorineConsumed: chlorineTotal,
     chlorine_consumed_by_unit: chlorineByUnit,
+    water_total: waterTotal,
+    water_distributed_total: waterDistributed,
+    water_network_total: waterNetwork,
   };
 
   return {

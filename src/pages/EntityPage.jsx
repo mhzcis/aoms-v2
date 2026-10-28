@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
   Chip,
   Dialog,
   DialogActions,
@@ -13,6 +12,7 @@ import {
   DialogTitle,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   Grid,
   IconButton,
   InputLabel,
@@ -33,25 +33,44 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
   AddRounded,
+  AssessmentRounded,
   BackupRounded,
+  CategoryRounded,
   DeleteRounded,
   EditRounded,
   FileDownloadRounded,
+  HistoryRounded,
+  LocalGasStationRounded,
+  ManageAccountsRounded,
+  PeopleRounded,
   PictureAsPdfRounded,
-  PrintRounded,
+  PlaceRounded,
+  PrecisionManufacturingRounded,
   RestoreRounded,
+  ScienceRounded,
   SearchRounded,
+  SettingsRounded,
   StarBorderRounded,
   StarRounded,
+  TimelineRounded,
 } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAoms } from '../context/AomsContext';
+import { PageTitle } from '../components/Common';
 import { PagedFooter, paginate } from '../components/Paged';
 import {
+  ASSET_KINDS,
+  assetKind,
+  calcNetwork,
+  calcPumpWater,
   calculateChlorineBalance,
-  calculateFuelBalance,
+  calculateTankBalance,
+  NO_FUEL_LABEL,
+  tankerLabel,
+  validatePumpLog,
   canAdmin,
   canWrite,
   CHLORINE_TX_TYPES,
@@ -64,7 +83,6 @@ import {
   METER_UNITS,
   ROLES,
   roundNum,
-  STATUS,
 } from '../domain/models';
 import {
   exportAomsCSV,
@@ -161,9 +179,26 @@ const TIMELINE_ENTITY_TAB = {
   chlorine_transaction: 'chlorine_transactions',
 };
 
+const BACKUP_ENTITY_LABELS = {
+  categories: 'التصنيفات',
+  category_fields: 'الحقول الديناميكية',
+  category_field_options: 'خيارات القوائم',
+  assets: 'الأصول والمعدات',
+  asset_field_values: 'قيم حقول الأصول',
+  operators: 'المشغلون',
+  fuel_types: 'أنواع الوقود',
+  profiles: 'المستخدمون',
+  operation_logs: 'سجلات التشغيل',
+  operation_log_values: 'قيم حقول التشغيل',
+  fuel_transactions: 'حركات الوقود',
+  chlorine_transactions: 'حركات الكلور',
+  timeline_events: 'أحداث الخط الزمني',
+  app_settings: 'إعدادات النظام',
+};
+
 export default function EntityPage({ type }) {
   const { data, profile, online, service, runAction, refresh, setNotice } = useAoms();
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
   const nav = useNavigate();
 
   const isAdmin = canAdmin(profile);
@@ -189,7 +224,6 @@ export default function EntityPage({ type }) {
   const timelineEvents = [...(data.timeline_events || [])].sort(byNewest);
   const auditLogs = [...(data.audit_logs || [])].sort(byNewest);
   const profiles = data.profiles || [];
-  const appSettings = data.app_settings || [];
 
   const [q, setQ] = useState('');
   const [conflictRecord, setConflictRecord] = useState(null);
@@ -214,6 +248,7 @@ export default function EntityPage({ type }) {
     name: '',
     code_prefix: '',
     description: '',
+    asset_kind: 'general',
     status: 'active',
     uses_meter: true,
     meter_unit: 'ساعة تشغيل',
@@ -253,6 +288,9 @@ export default function EntityPage({ type }) {
     status: 'active',
     notes: '',
     is_default: false,
+    fuel_type_id: '',
+    pump_capacity: '',
+    default_tanker_id: '',
     has_fuel_rate_override: false,
     fuel_rate_override: '',
     has_chlorine_consumption_override: false,
@@ -290,6 +328,9 @@ export default function EntityPage({ type }) {
     current_reading: '',
     chlorine_consumed: '',
     residual_chlorine: '',
+    tanker_id: null,
+    trips_count: '',
+    distributed_quantity: '',
     notes: '',
   });
   const [opDynValues, setOpDynValues] = useState({});
@@ -386,7 +427,7 @@ export default function EntityPage({ type }) {
   const conflictBanner = conflictRecord && (
     <Alert
       severity="error"
-      sx={{ mb: 2 }}
+      sx={{ mb: 2.5 }}
       action={
         <Button
           color="inherit"
@@ -415,71 +456,69 @@ export default function EntityPage({ type }) {
     return (
       <>
         {conflictBanner}
-        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
-          <Box>
-            <Typography variant="h4" fontWeight={800}>
-              التصنيفات ومحرك الحقول الديناميكية
-            </Typography>
-            <Typography color="text.secondary">
-              إدارة تصنيفات الأصول، وحدات العداد، معدلات الوقود والكلور، والحقول الديناميكية
-            </Typography>
-          </Box>
-          {isAdmin && (
-            <Stack direction="row" spacing={1}>
-              <Button
-                variant="outlined"
-                startIcon={<AddRounded />}
-                disabled={!canMutateAdmin || !categories.length}
-                onClick={() => {
-                  setFieldForm({
-                    id: '',
-                    category_id: categories[0]?.id || '',
-                    scope: 'asset',
-                    field_key: '',
-                    label: '',
-                    description: '',
-                    field_type: 'text',
-                    unit: '',
-                    is_required: false,
-                    show_in_reports: true,
-                    sort_order: 0,
-                    is_active: true,
-                  });
-                  setFieldOptsText('');
-                  setFieldDialog(true);
-                }}
-              >
-                إضافة حقل ديناميكي
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<AddRounded />}
-                disabled={!canMutateAdmin}
-                onClick={() => {
-                  setCatForm({
-                    id: '',
-                    name: '',
-                    code_prefix: '',
-                    description: '',
-                    status: 'active',
-                    uses_meter: true,
-                    meter_unit: 'ساعة تشغيل',
-                    supports_fuel: true,
-                    supports_chlorine: false,
-                    default_fuel_rate: '',
-                    fuel_unit: 'لتر',
-                    default_chlorine_consumption: '',
-                    chlorine_unit: 'كجم',
-                    default_residual_chlorine: '',
-                  });
-                  setCatDialog(true);
-                }}
-              >
-                إضافة تصنيف
-              </Button>
-            </Stack>
-          )}
-        </Stack>
+        <PageTitle
+          title="التصنيفات ومحرك الحقول الديناميكية"
+          subtitle="إدارة تصنيفات الأصول، وحدات العداد، معدلات الوقود والكلور، والحقول الديناميكية"
+          badge={<Chip size="small" color="primary" icon={<CategoryRounded />} label={`${categories.length} تصنيف`} />}
+          action={
+            isAdmin && (
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button
+                  variant="outlined"
+                  startIcon={<AddRounded />}
+                  disabled={!canMutateAdmin || !categories.length}
+                  onClick={() => {
+                    setFieldForm({
+                      id: '',
+                      category_id: categories[0]?.id || '',
+                      scope: 'asset',
+                      field_key: '',
+                      label: '',
+                      description: '',
+                      field_type: 'text',
+                      unit: '',
+                      is_required: false,
+                      show_in_reports: true,
+                      sort_order: 0,
+                      is_active: true,
+                    });
+                    setFieldOptsText('');
+                    setFieldDialog(true);
+                  }}
+                >
+                  إضافة حقل ديناميكي
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<AddRounded />}
+                  disabled={!canMutateAdmin}
+                  onClick={() => {
+                    setCatForm({
+                      id: '',
+                      name: '',
+                      code_prefix: '',
+                      description: '',
+                      asset_kind: 'general',
+                      status: 'active',
+                      uses_meter: true,
+                      meter_unit: 'ساعة تشغيل',
+                      supports_fuel: true,
+                      supports_chlorine: false,
+                      default_fuel_rate: '',
+                      fuel_unit: 'لتر',
+                      default_chlorine_consumption: '',
+                      chlorine_unit: 'كجم',
+                      default_residual_chlorine: '',
+                    });
+                    setCatDialog(true);
+                  }}
+                >
+                  إضافة تصنيف
+                </Button>
+              </Stack>
+            )
+          }
+        />
 
         <TextField
           fullWidth
@@ -487,24 +526,30 @@ export default function EntityPage({ type }) {
           label="بحث في التصنيفات"
           value={q}
           onChange={e => setQ(e.target.value)}
-          sx={{ mb: 2 }}
+          sx={{ mb: 2.5 }}
         />
 
-        <Grid container spacing={2}>
+        <Grid container spacing={2.5}>
           {filteredCats.map(cat => {
             const catFields = categoryFields
               .filter(f => f.category_id === cat.id)
               .sort((a, b) => a.sort_order - b.sort_order);
             return (
               <Grid size={{ xs: 12, md: 6 }} key={cat.id}>
-                <Card>
-                  <CardContent>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Card sx={{ height: '100%' }}>
+                  <Box
+                    sx={{
+                      height: 5,
+                      bgcolor: cat.status === 'active' ? 'primary.main' : 'text.secondary',
+                    }}
+                  />
+                  <CardContent sx={{ p: 2.5 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1.5}>
                       <Box>
                         <Typography variant="h6" fontWeight={800}>
                           {cat.code_prefix} — {cat.name}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
                           {cat.description || 'بلا وصف'}
                         </Typography>
                       </Box>
@@ -521,6 +566,7 @@ export default function EntityPage({ type }) {
                             onClick={() => {
                               setCatForm({
                                 ...cat,
+                                asset_kind: cat.asset_kind || 'general',
                                 default_fuel_rate: cat.default_fuel_rate ?? '',
                                 default_chlorine_consumption: cat.default_chlorine_consumption ?? '',
                                 default_residual_chlorine: cat.default_residual_chlorine ?? '',
@@ -534,12 +580,21 @@ export default function EntityPage({ type }) {
                       </Stack>
                     </Stack>
 
-                    <Stack direction="row" spacing={1} mt={1.5} flexWrap="wrap" useFlexGap>
+                    <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
                       <Chip
                         size="small"
                         variant="outlined"
                         label={cat.uses_meter ? `عداد: ${cat.meter_unit}` : 'بلا عداد'}
                       />
+                      {assetKind(cat) !== 'general' && (
+                        <Chip
+                          size="small"
+                          color="info"
+                          variant="outlined"
+                          data-testid={`cat-kind-${cat.code_prefix}`}
+                          label={`نوع الأصول: ${ASSET_KINDS[assetKind(cat)]}`}
+                        />
+                      )}
                       {cat.supports_fuel && (
                         <Chip
                           size="small"
@@ -558,23 +613,26 @@ export default function EntityPage({ type }) {
                       )}
                     </Stack>
 
-                    <Typography variant="subtitle2" mt={2} mb={1} fontWeight={700}>
+                    <Typography variant="subtitle2" mt={2.5} mb={1} fontWeight={800}>
                       الحقول الديناميكية ({catFields.length}):
                     </Typography>
-                    <Stack spacing={0.75}>
+                    <Stack spacing={1}>
                       {catFields.map(f => (
                         <Box
                           key={f.id}
                           sx={{
-                            p: 1,
-                            borderRadius: 2,
+                            p: 1.25,
+                            borderRadius: 2.5,
                             bgcolor: 'action.hover',
+                            border: '1px solid',
+                            borderColor: 'divider',
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
+                            gap: 1,
                           }}
                         >
-                          <span>
+                          <span style={{ fontSize: '0.88rem' }}>
                             <b>{f.label}</b> ({f.scope === 'asset' ? 'حقل أصل' : 'حقل تشغيل'} • {f.field_type})
                             {f.is_required ? ' [إلزامي]' : ''}
                             {!f.is_active ? ' [معطل]' : ''}
@@ -638,6 +696,25 @@ export default function EntityPage({ type }) {
                 onChange={e => setCatForm({ ...catForm, description: e.target.value })}
               />
               <FormControl fullWidth>
+                <InputLabel>نوع الأصول</InputLabel>
+                <Select
+                  label="نوع الأصول"
+                  value={catForm.asset_kind || 'general'}
+                  disabled={Boolean(catForm.id && hasAssetsInCat(catForm.id))}
+                  onChange={e => setCatForm({ ...catForm, asset_kind: e.target.value })}
+                  inputProps={{ 'data-testid': 'cat-asset-kind' }}
+                >
+                  <MenuItem value="general">عام</MenuItem>
+                  <MenuItem value="pump">مضخة مياه (قدرة م³/ساعة + صهريج)</MenuItem>
+                  <MenuItem value="tanker">صهريج</MenuItem>
+                </Select>
+                <FormHelperText>
+                  {catForm.id && hasAssetsInCat(catForm.id)
+                    ? 'مقفل لوجود أصول مسجلة تحت هذا التصنيف'
+                    : 'المضخة تتطلب قدرة المضخة في بطاقة الأصل؛ الصهريج يظهر في سجلات المضخات'}
+                </FormHelperText>
+              </FormControl>
+              <FormControl fullWidth>
                 <InputLabel>الحالة</InputLabel>
                 <Select
                   label="الحالة"
@@ -689,7 +766,7 @@ export default function EntityPage({ type }) {
                 label="يدعم الوقود؟"
               />
               {catForm.supports_fuel && (
-                <Stack direction="row" spacing={2}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                   <TextField
                     fullWidth
                     type="number"
@@ -715,7 +792,7 @@ export default function EntityPage({ type }) {
                 label="يدعم الكلور؟"
               />
               {catForm.supports_chlorine && (
-                <Stack direction="row" spacing={2}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                   <TextField
                     fullWidth
                     type="number"
@@ -907,50 +984,64 @@ export default function EntityPage({ type }) {
     const activeCatFields = categoryFields
       .filter(f => f.category_id === assetForm.category_id && f.scope === 'asset' && f.is_active)
       .sort((a, b) => a.sort_order - b.sort_order);
+    const formCat = categories.find(c => c.id === assetForm.category_id);
+    const formIsPump = assetKind(formCat) === 'pump';
+    const formTankLocked = Boolean(
+      assetForm.id &&
+        (fuelTransactions.some(t => t.asset_id === assetForm.id) ||
+          operationLogs.some(l => l.asset_id === assetForm.id && Number(l.fuel_consumed || 0) > 0))
+    );
+    const tankerOptions = assets.filter(
+      t =>
+        assetKind(categories.find(c => c.id === t.category_id)) === 'tanker' &&
+        (t.status === 'active' || t.id === assetForm.default_tanker_id)
+    );
+    const assetFormError =
+      formIsPump && !(Number(assetForm.pump_capacity) > 0) ? 'قدرة المضخة (م³/ساعة) مطلوبة ويجب أن تكون أكبر من صفر' : '';
 
     return (
       <>
         {conflictBanner}
-        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
-          <Box>
-            <Typography variant="h4" fontWeight={800}>
-              الأصول والمعدات
-            </Typography>
-            <Typography color="text.secondary">
-              الأصول مرتبة تصاعديًا حسب الكود مع دعم التجاوز والوراثة والأصل الافتراضي لكل تصنيف
-            </Typography>
-          </Box>
-          {isAdmin && (
-            <Button
-              variant="contained"
-              startIcon={<AddRounded />}
-              disabled={!canMutateAdmin}
-              onClick={() => {
-                const firstActiveCat = categories.find(c => c.status === 'active');
-                setAssetForm({
-                  id: '',
-                  version: 1,
-                  name: '',
-                  category_id: firstActiveCat?.id || '',
-                  location: '',
-                  status: 'active',
-                  notes: '',
-                  is_default: false,
-                  has_fuel_rate_override: false,
-                  fuel_rate_override: '',
-                  has_chlorine_consumption_override: false,
-                  chlorine_consumption_override: '',
-                  has_residual_chlorine_override: false,
-                  residual_chlorine_override: '',
-                });
-                setAssetDynValues({});
-                setAssetDialog(true);
-              }}
-            >
-              إضافة أصل جديد
-            </Button>
-          )}
-        </Stack>
+        <PageTitle
+          title="الأصول والمعدات"
+          subtitle="الأصول مرتبة تصاعديًا حسب الكود مع دعم التجاوز والوراثة والأصل الافتراضي لكل تصنيف"
+          badge={<Chip size="small" color="info" icon={<PrecisionManufacturingRounded />} label={`${filteredAssets.length} أصل`} />}
+          action={
+            isAdmin && (
+              <Button
+                variant="contained"
+                startIcon={<AddRounded />}
+                disabled={!canMutateAdmin}
+                onClick={() => {
+                  const firstActiveCat = categories.find(c => c.status === 'active');
+                  setAssetForm({
+                    id: '',
+                    version: 1,
+                    name: '',
+                    category_id: firstActiveCat?.id || '',
+                    location: '',
+                    status: 'active',
+                    notes: '',
+                    is_default: false,
+                    fuel_type_id: '',
+                    pump_capacity: '',
+                    default_tanker_id: '',
+                    has_fuel_rate_override: false,
+                    fuel_rate_override: '',
+                    has_chlorine_consumption_override: false,
+                    chlorine_consumption_override: '',
+                    has_residual_chlorine_override: false,
+                    residual_chlorine_override: '',
+                  });
+                  setAssetDynValues({});
+                  setAssetDialog(true);
+                }}
+              >
+                إضافة أصل جديد
+              </Button>
+            )
+          }
+        />
 
         <TextField
           fullWidth
@@ -958,10 +1049,10 @@ export default function EntityPage({ type }) {
           label="بحث بالكود أو الاسم أو الموقع"
           value={q}
           onChange={e => setQ(e.target.value)}
-          sx={{ mb: 2 }}
+          sx={{ mb: 2.5 }}
         />
 
-        <Grid container spacing={2}>
+        <Grid container spacing={2.5}>
           {assetsPage.rows.map(a => {
             const cat = categories.find(c => c.id === a.category_id);
             const effFuel = effectiveValue(a, cat, 'fuel_rate');
@@ -970,16 +1061,32 @@ export default function EntityPage({ type }) {
               <Grid size={{ xs: 12, md: 6, lg: 4 }} key={a.id}>
                 <Card
                   data-highlighted={highlightId === a.id ? 'true' : undefined}
-                  sx={{ height: '100%', ...(highlightId === a.id ? { outline: 3, outlineColor: 'secondary.main' } : {}) }}
+                  sx={{
+                    height: '100%',
+                    ...(highlightId === a.id ? { outline: 3, outlineColor: 'secondary.main' } : {}),
+                  }}
                 >
-                  <CardContent>
-                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                  <Box
+                    sx={{
+                      height: 5,
+                      bgcolor: a.is_default ? 'secondary.main' : a.status === 'active' ? 'primary.main' : 'text.secondary',
+                    }}
+                  />
+                  <CardContent sx={{ p: 2.5 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1}>
                       <Box>
                         <Typography variant="h6" fontWeight={800}>
                           {a.asset_code} — {a.name}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {cat?.name || '—'} • {a.location || 'بلا موقع'}
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.35 }}
+                        >
+                          <PlaceRounded fontSize="small" color="primary" />
+                          <span>
+                            {cat?.name || '—'} • {a.location || 'بلا موقع'}
+                          </span>
                         </Typography>
                       </Box>
                       {isAdmin && (
@@ -1001,6 +1108,9 @@ export default function EntityPage({ type }) {
                               });
                             setAssetForm({
                               ...a,
+                              fuel_type_id: a.fuel_type_id ?? '',
+                              pump_capacity: a.pump_capacity ?? '',
+                              default_tanker_id: a.default_tanker_id ?? '',
                               fuel_rate_override: a.fuel_rate_override ?? '',
                               chlorine_consumption_override: a.chlorine_consumption_override ?? '',
                               residual_chlorine_override: a.residual_chlorine_override ?? '',
@@ -1014,7 +1124,7 @@ export default function EntityPage({ type }) {
                       )}
                     </Stack>
 
-                    <Stack direction="row" spacing={1} mt={1.5} flexWrap="wrap" useFlexGap>
+                    <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
                       <Chip
                         size="small"
                         color={a.status === 'active' ? 'success' : 'default'}
@@ -1032,6 +1142,7 @@ export default function EntityPage({ type }) {
                         a.status === 'active' && (
                           <Button
                             size="small"
+                            variant="outlined"
                             disabled={!canMutateAdmin}
                             startIcon={<StarBorderRounded />}
                             onClick={() =>
@@ -1047,11 +1158,40 @@ export default function EntityPage({ type }) {
                       )}
                     </Stack>
 
-                    <Box sx={{ mt: 1.5, p: 1.25, borderRadius: 2, bgcolor: 'action.hover' }}>
+                    <Box
+                      sx={{
+                        mt: 2,
+                        p: 1.5,
+                        borderRadius: 2.5,
+                        bgcolor: 'action.hover',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    >
                       {cat?.supports_fuel && (
+                        <Typography variant="body2" data-testid={`asset-tank-${a.asset_code}`}>
+                          خزان الوقود:{' '}
+                          <b>
+                            {a.fuel_type_id
+                              ? `${fuelTypes.find(f => f.id === a.fuel_type_id)?.name || '—'} — الرصيد ${
+                                  calculateTankBalance(a, fuelTransactions, operationLogs).balance
+                                }`
+                              : NO_FUEL_LABEL}
+                          </b>
+                        </Typography>
+                      )}
+                      {cat?.supports_fuel && a.fuel_type_id && (
                         <Typography variant="body2">
-                          معدل الوقود الفعلي: <b>{effFuel ?? 0}</b>{' '}
-                          {a.has_fuel_rate_override ? '(تجاوز خاص)' : '(موروث من التصنيف)'}
+                          استهلاك الوقود في الساعة: <b>{effFuel ?? 0}</b>{' '}
+                          {a.has_fuel_rate_override ? '(من بطاقة الأصل)' : '(موروث من التصنيف)'}
+                        </Typography>
+                      )}
+                      {assetKind(cat) === 'pump' && (
+                        <Typography variant="body2">
+                          قدرة المضخة: <b>{a.pump_capacity ?? '—'}</b> م³/ساعة
+                          {a.default_tanker_id
+                            ? ` • ${tankerLabel(assets.find(t => t.id === a.default_tanker_id))} (افتراضي)`
+                            : ''}
                         </Typography>
                       )}
                       {cat?.supports_chlorine && (
@@ -1060,7 +1200,7 @@ export default function EntityPage({ type }) {
                           {a.has_chlorine_consumption_override ? '(تجاوز خاص)' : '(موروث)'}
                         </Typography>
                       )}
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                         الإصدار: v{a.version || 1}
                       </Typography>
                     </Box>
@@ -1113,24 +1253,89 @@ export default function EntityPage({ type }) {
                   <MenuItem value="inactive">غير نشط (معطل)</MenuItem>
                 </Select>
               </FormControl>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={Boolean(assetForm.has_fuel_rate_override)}
-                    onChange={e =>
-                      setAssetForm({ ...assetForm, has_fuel_rate_override: e.target.checked })
+              {formCat?.supports_fuel && (
+                <FormControl fullWidth>
+                  <InputLabel shrink>خزان الوقود (نوع الوقود)</InputLabel>
+                  <Select
+                    label="خزان الوقود (نوع الوقود)"
+                    value={assetForm.fuel_type_id || ''}
+                    disabled={formTankLocked}
+                    notched
+                    displayEmpty
+                    onChange={e => setAssetForm({ ...assetForm, fuel_type_id: e.target.value })}
+                    inputProps={{ 'data-testid': 'asset-fuel-type' }}
+                  >
+                    <MenuItem value="">{NO_FUEL_LABEL}</MenuItem>
+                    {fuelTypes
+                      .filter(ft => ft.status === 'active' || ft.id === assetForm.fuel_type_id)
+                      .map(ft => (
+                        <MenuItem key={ft.id} value={ft.id}>
+                          {ft.name} ({ft.unit})
+                        </MenuItem>
+                      ))}
+                  </Select>
+                  <FormHelperText>
+                    {formTankLocked
+                      ? 'خزان واحد لكل أصل — لا يمكن تغيير نوع الوقود بعد تسجيل تزويد أو استهلاك'
+                      : 'خزان واحد لكل أصل؛ يُحسب الاستهلاك آليًا = ساعات التشغيل × استهلاك الساعة'}
+                  </FormHelperText>
+                </FormControl>
+              )}
+              {formCat?.supports_fuel && assetForm.fuel_type_id && (
+                <>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={Boolean(assetForm.has_fuel_rate_override)}
+                        onChange={e =>
+                          setAssetForm({ ...assetForm, has_fuel_rate_override: e.target.checked })
+                        }
+                      />
                     }
+                    label={`استهلاك وقود خاص بهذا الأصل (الافتراضي للتصنيف: ${formCat?.default_fuel_rate ?? 0} ${
+                      formCat?.fuel_unit || 'لتر'
+                    }/ساعة)`}
                   />
-                }
-                label="تجاوز معدل استهلاك الوقود الافتراضي للتصنيف"
-              />
-              {assetForm.has_fuel_rate_override && (
-                <TextField
-                  type="number"
-                  label="قيمة تجاوز معدل الوقود"
-                  value={assetForm.fuel_rate_override}
-                  onChange={e => setAssetForm({ ...assetForm, fuel_rate_override: e.target.value })}
-                />
+                  {assetForm.has_fuel_rate_override && (
+                    <TextField
+                      type="number"
+                      label={`استهلاك الوقود في الساعة (${formCat?.fuel_unit || 'لتر'}/ساعة)`}
+                      value={assetForm.fuel_rate_override}
+                      onChange={e => setAssetForm({ ...assetForm, fuel_rate_override: e.target.value })}
+                    />
+                  )}
+                </>
+              )}
+              {formIsPump && (
+                <>
+                  <TextField
+                    type="number"
+                    required
+                    label="قدرة المضخة (م³/ساعة) *"
+                    value={assetForm.pump_capacity}
+                    error={Boolean(assetFormError)}
+                    helperText={assetFormError || 'تُحسب المياه = (قراءة النهاية − قراءة البداية) × القدرة'}
+                    inputProps={{ min: 0, step: 'any', 'data-testid': 'asset-pump-capacity' }}
+                    onChange={e => setAssetForm({ ...assetForm, pump_capacity: e.target.value })}
+                  />
+                  <FormControl fullWidth>
+                    <InputLabel>الصهريج الافتراضي</InputLabel>
+                    <Select
+                      label="الصهريج الافتراضي"
+                      value={assetForm.default_tanker_id || ''}
+                      onChange={e => setAssetForm({ ...assetForm, default_tanker_id: e.target.value })}
+                      inputProps={{ 'data-testid': 'asset-default-tanker' }}
+                    >
+                      <MenuItem value="">بدون صهريج افتراضي</MenuItem>
+                      {tankerOptions.map(t => (
+                        <MenuItem key={t.id} value={t.id}>
+                          {tankerLabel(t)} ({t.asset_code})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    <FormHelperText>يمكن تغييره في كل سجل تشغيل</FormHelperText>
+                  </FormControl>
+                </>
               )}
               <FormControlLabel
                 control={
@@ -1178,7 +1383,7 @@ export default function EntityPage({ type }) {
             <Button onClick={() => setAssetDialog(false)}>إلغاء</Button>
             <Button
               variant="contained"
-              disabled={!canMutateAdmin}
+              disabled={!canMutateAdmin || Boolean(assetFormError)}
               onClick={async () => {
                 if (assetForm.id) {
                   await executeWithConflictGuard(
@@ -1216,32 +1421,36 @@ export default function EntityPage({ type }) {
     const opsPage = pageRows('operators', filteredOps);
     return (
       <>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h4" fontWeight={800}>
-            المشغلون
-          </Typography>
-          {isAdmin && (
-            <Button
-              variant="contained"
-              startIcon={<AddRounded />}
-              disabled={!canMutateAdmin}
-              onClick={() => {
-                setOpForm({ id: '', name: '', phone: '', notes: '', status: 'active' });
-                setOpDialog(true);
-              }}
-            >
-              إضافة مشغل
-            </Button>
-          )}
-        </Stack>
+        <PageTitle
+          title="المشغلون"
+          subtitle="إدارة الكوادر الميدانية المسؤولة عن تشغيل الأصول وتسجيل القراءات"
+          badge={<Chip size="small" color="primary" icon={<PeopleRounded />} label={`${filteredOps.length} مشغل`} />}
+          action={
+            isAdmin && (
+              <Button
+                variant="contained"
+                startIcon={<AddRounded />}
+                disabled={!canMutateAdmin}
+                onClick={() => {
+                  setOpForm({ id: '', name: '', phone: '', notes: '', status: 'active' });
+                  setOpDialog(true);
+                }}
+              >
+                إضافة مشغل
+              </Button>
+            )
+          }
+        />
+
         <TextField
           fullWidth
           size="small"
           label="بحث في المشغلين"
           value={q}
           onChange={e => setQ(e.target.value)}
-          sx={{ mb: 2 }}
+          sx={{ mb: 2.5 }}
         />
+
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -1257,7 +1466,7 @@ export default function EntityPage({ type }) {
               {opsPage.rows.map(op => (
                 <TableRow key={op.id} selected={highlightId === op.id}>
                   <TableCell fontWeight={700}>{op.name}</TableCell>
-                  <TableCell>{op.phone || '—'}</TableCell>
+                  <TableCell className="tabular-nums">{op.phone || '—'}</TableCell>
                   <TableCell>{op.notes || '—'}</TableCell>
                   <TableCell>
                     <Chip
@@ -1380,20 +1589,50 @@ export default function EntityPage({ type }) {
     const effRate = activeCategory?.supports_fuel
       ? effectiveValue(activeAsset, activeCategory, 'fuel_rate')
       : 0;
+    const hasTank = Boolean(activeAsset?.fuel_type_id);
     const computedFuel =
-      activeCategory?.supports_fuel && activeCategory?.uses_meter && computedUsage !== null && computedUsage >= 0
+      hasTank && activeCategory?.supports_fuel && activeCategory?.uses_meter && computedUsage !== null && computedUsage >= 0
         ? roundNum(computedUsage * Number(effRate || 0))
         : 0;
+    const tankFuelType = fuelTypes.find(f => f.id === activeAsset?.fuel_type_id) || null;
+    const isPump = assetKind(activeCategory) === 'pump';
+    const editingLog = opLogForm.id ? operationLogs.find(l => l.id === opLogForm.id) : null;
+    const pumpCap = Number(editingLog?.pump_capacity_snapshot ?? activeAsset?.pump_capacity ?? 0);
+    const formTankerId =
+      opLogForm.tanker_id !== null && opLogForm.tanker_id !== undefined
+        ? opLogForm.tanker_id
+        : activeAsset?.default_tanker_id || '';
+    const waterTotal = isPump && computedUsage !== null && computedUsage >= 0 ? calcPumpWater(0, computedUsage, pumpCap) : 0;
+    const distributedNum = Number(opLogForm.distributed_quantity || 0);
+    const networkQty = calcNetwork(waterTotal, distributedNum);
+    const pumpErrors = isPump
+      ? [
+          ...(!(pumpCap > 0) ? ['قدرة المضخة غير محددة في بطاقة الأصل؛ أدخلها من صفحة الأصول أولًا'] : []),
+          ...(computedUsage !== null
+            ? validatePumpLog({
+                waterTotal,
+                tripsCount: opLogForm.trips_count === '' ? 0 : Number(opLogForm.trips_count),
+                distributed: distributedNum,
+                tankerId: formTankerId || null,
+              })
+            : []),
+        ]
+      : [];
+    const tankerChoices = assets.filter(
+      t =>
+        assetKind(categories.find(c => c.id === t.category_id)) === 'tanker' &&
+        (t.status === 'active' || t.id === formTankerId)
+    );
+    const tankerName = id => tankerLabel(assets.find(t => t.id === id)) || '—';
 
     return (
       <>
         {conflictBanner}
-        <Typography variant="h4" fontWeight={800} mb={1}>
-          سجلات التشغيل
-        </Typography>
-        <Typography color="text.secondary" mb={3}>
-          اختر التصنيف ثم الأصل لعرض سجلاته وإحصاءاته وإدخال قراءة التشغيل اليومية
-        </Typography>
+        <PageTitle
+          title="سجلات التشغيل"
+          subtitle="اختر التصنيف ثم الأصل لعرض سجلاته وإحصاءاته وإدخال قراءة التشغيل اليومية"
+          badge={<Chip size="small" color="success" icon={<HistoryRounded />} label={`${assetLogs.length} سجل للأصل`} />}
+        />
 
         <Paper sx={{ p: 2.5, mb: 3 }}>
           <Grid container spacing={2}>
@@ -1433,8 +1672,15 @@ export default function EntityPage({ type }) {
         </Paper>
 
         {activeAsset && activeCategory && canOperate && (
-          <Paper sx={{ p: 2.5, mb: 3 }}>
-            <Typography variant="h6" mb={2}>
+          <Paper
+            sx={{
+              p: 2.5,
+              mb: 3,
+              border: '1px solid',
+              borderColor: theme => alpha(theme.palette.primary.main, 0.25),
+            }}
+          >
+            <Typography variant="h6" mb={2} fontWeight={800}>
               {opLogForm.id
                 ? `تعديل آخر سجل تشغيل للأصل ${activeAsset.asset_code}`
                 : `إضافة سجل تشغيل للأصل ${activeAsset.asset_code}`}
@@ -1535,8 +1781,98 @@ export default function EntityPage({ type }) {
                     disabled
                     label={`استهلاك الوقود المحسوب (${activeCategory.fuel_unit || 'لتر'})`}
                     value={computedFuel}
+                    helperText={
+                      hasTank
+                        ? `خزان: ${tankFuelType?.name || '—'} • ${effRate ?? 0} ${activeCategory.fuel_unit || 'لتر'}/ساعة`
+                        : `${NO_FUEL_LABEL} — لا يُحسب استهلاك`
+                    }
                   />
                 </Grid>
+              )}
+              {isPump && (
+                <>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      disabled
+                      label="قدرة المضخة (م³/ساعة)"
+                      value={pumpCap > 0 ? pumpCap : '—'}
+                      helperText={editingLog ? 'لقطة القدرة المحفوظة مع السجل' : 'من بطاقة الأصل'}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      disabled
+                      label="إجمالي المياه (م³)"
+                      value={waterTotal}
+                      inputProps={{ 'data-testid': 'log-water-total' }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>الصهريج</InputLabel>
+                      <Select
+                        label="الصهريج"
+                        value={formTankerId || ''}
+                        onChange={e => setOpLogForm({ ...opLogForm, tanker_id: e.target.value })}
+                        inputProps={{ 'data-testid': 'log-tanker' }}
+                      >
+                        <MenuItem value="">بدون صهريج</MenuItem>
+                        {tankerChoices.map(t => (
+                          <MenuItem key={t.id} value={t.id}>
+                            {tankerLabel(t)}
+                            {t.id === activeAsset.default_tanker_id ? ' (افتراضي)' : ''}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="number"
+                      label="عدد النقلات"
+                      value={opLogForm.trips_count}
+                      inputProps={{ min: 0, step: 1, 'data-testid': 'log-trips' }}
+                      onChange={e => setOpLogForm({ ...opLogForm, trips_count: e.target.value })}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="number"
+                      label="الكمية الموزعة (م³)"
+                      value={opLogForm.distributed_quantity}
+                      error={distributedNum > waterTotal}
+                      helperText={distributedNum > waterTotal ? 'لا يمكن أن تتجاوز إجمالي المياه' : 'إدخال يدوي'}
+                      inputProps={{ min: 0, step: 'any', 'data-testid': 'log-distributed' }}
+                      onChange={e => setOpLogForm({ ...opLogForm, distributed_quantity: e.target.value })}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      disabled
+                      label="كمية الشبكة (م³)"
+                      value={networkQty}
+                      helperText="= الإجمالي − الموزعة"
+                      inputProps={{ 'data-testid': 'log-network' }}
+                    />
+                  </Grid>
+                  {pumpErrors.length > 0 && (
+                    <Grid size={{ xs: 12 }}>
+                      <Alert severity="warning" data-testid="log-pump-errors">
+                        {pumpErrors[0]}
+                      </Alert>
+                    </Grid>
+                  )}
+                </>
               )}
               {activeCategory.supports_chlorine && (
                 <>
@@ -1600,7 +1936,8 @@ export default function EntityPage({ type }) {
                     disabled={
                       !canMutateOperate ||
                       activeAsset.status !== 'active' ||
-                      (!opLogForm.id && dateRule.blocked)
+                      (!opLogForm.id && dateRule.blocked) ||
+                      pumpErrors.length > 0
                     }
                     onClick={async () => {
                       await executeWithConflictGuard(
@@ -1608,6 +1945,13 @@ export default function EntityPage({ type }) {
                           service.saveOperation(
                             {
                               ...opLogForm,
+                              ...(isPump
+                                ? {
+                                    tanker_id: formTankerId || null,
+                                    trips_count: opLogForm.trips_count === '' ? 0 : Number(opLogForm.trips_count),
+                                    distributed_quantity: distributedNum,
+                                  }
+                                : { tanker_id: undefined, trips_count: undefined, distributed_quantity: undefined }),
                               asset_id: activeAsset.id,
                               operation_date: opLogForm.operation_date || dateRule.defaultDate,
                               previous_reading: prevRead,
@@ -1626,6 +1970,9 @@ export default function EntityPage({ type }) {
                         current_reading: '',
                         chlorine_consumed: '',
                         residual_chlorine: '',
+                        tanker_id: null,
+                        trips_count: '',
+                        distributed_quantity: '',
                         notes: '',
                       });
                       setOpDynValues({});
@@ -1646,6 +1993,9 @@ export default function EntityPage({ type }) {
                           current_reading: '',
                           chlorine_consumed: '',
                           residual_chlorine: '',
+                          tanker_id: null,
+                          trips_count: '',
+                          distributed_quantity: '',
                           notes: '',
                         });
                         setOpDynValues({});
@@ -1670,6 +2020,11 @@ export default function EntityPage({ type }) {
                 {activeCategory?.uses_meter && <TableCell>الحالية</TableCell>}
                 {activeCategory?.uses_meter && <TableCell>الفرق ({activeCategory.meter_unit})</TableCell>}
                 {activeCategory?.supports_fuel && <TableCell>الوقود</TableCell>}
+                {isPump && <TableCell>المياه (م³)</TableCell>}
+                {isPump && <TableCell>الصهريج</TableCell>}
+                {isPump && <TableCell>النقلات</TableCell>}
+                {isPump && <TableCell>الموزعة (م³)</TableCell>}
+                {isPump && <TableCell>الشبكة (م³)</TableCell>}
                 {activeCategory?.supports_chlorine && <TableCell>الكلور</TableCell>}
                 <TableCell>الملاحظات</TableCell>
                 <TableCell>إجراءات</TableCell>
@@ -1684,13 +2039,18 @@ export default function EntityPage({ type }) {
                     key={l.id}
                     selected={highlightId === l.id}
                   >
-                    <TableCell>{l.operation_date}</TableCell>
-                    <TableCell>{op?.name || '—'}</TableCell>
-                    {activeCategory?.uses_meter && <TableCell>{l.previous_reading ?? '—'}</TableCell>}
-                    {activeCategory?.uses_meter && <TableCell>{l.current_reading ?? '—'}</TableCell>}
-                    {activeCategory?.uses_meter && <TableCell><b>{l.usage_value ?? '—'}</b></TableCell>}
-                    {activeCategory?.supports_fuel && <TableCell>{l.fuel_consumed ?? 0}</TableCell>}
-                    {activeCategory?.supports_chlorine && <TableCell>{l.chlorine_consumed ?? 0}</TableCell>}
+                    <TableCell className="tabular-nums">{l.operation_date}</TableCell>
+                    <TableCell fontWeight={600}>{op?.name || '—'}</TableCell>
+                    {activeCategory?.uses_meter && <TableCell className="tabular-nums">{l.previous_reading ?? '—'}</TableCell>}
+                    {activeCategory?.uses_meter && <TableCell className="tabular-nums">{l.current_reading ?? '—'}</TableCell>}
+                    {activeCategory?.uses_meter && <TableCell className="tabular-nums"><b>{l.usage_value ?? '—'}</b></TableCell>}
+                    {activeCategory?.supports_fuel && <TableCell className="tabular-nums">{l.fuel_consumed ?? 0}</TableCell>}
+                    {isPump && <TableCell className="tabular-nums">{l.water_total ?? '—'}</TableCell>}
+                    {isPump && <TableCell sx={{ whiteSpace: 'nowrap' }}>{l.tanker_id ? tankerName(l.tanker_id) : '—'}</TableCell>}
+                    {isPump && <TableCell className="tabular-nums">{l.trips_count ?? 0}</TableCell>}
+                    {isPump && <TableCell className="tabular-nums">{l.distributed_quantity ?? 0}</TableCell>}
+                    {isPump && <TableCell className="tabular-nums">{l.network_quantity ?? '—'}</TableCell>}
+                    {activeCategory?.supports_chlorine && <TableCell className="tabular-nums">{l.chlorine_consumed ?? 0}</TableCell>}
                     <TableCell>{l.notes || '—'}</TableCell>
                     <TableCell>
                       {isLast && canOperate ? (
@@ -1721,6 +2081,9 @@ export default function EntityPage({ type }) {
                                 current_reading: l.current_reading ?? '',
                                 chlorine_consumed: l.chlorine_consumed ?? '',
                                 residual_chlorine: l.residual_chlorine ?? '',
+                                tanker_id: l.tanker_id || '',
+                                trips_count: l.trips_count ?? 0,
+                                distributed_quantity: l.distributed_quantity ?? 0,
                                 notes: l.notes || '',
                               });
                               setOpDynValues(vals);
@@ -1761,10 +2124,14 @@ export default function EntityPage({ type }) {
 
   // -------------------- VIEW: FUEL TRANSACTIONS (Section 10) --------------------
   if (type === 'fuel_transactions') {
+    // One tank per asset: only assets whose card has a fuel type (tank) are eligible.
     const eligibleAssets = assets.filter(a => {
       const c = categories.find(x => x.id === a.category_id);
-      return c?.supports_fuel;
+      return c?.supports_fuel && a.fuel_type_id;
     });
+    const fuelFormAsset = assets.find(a => a.id === fuelForm.asset_id) || null;
+    const fuelFormTankId = fuelFormAsset?.fuel_type_id || fuelForm.fuel_type_id || '';
+    const fuelFormTank = fuelTypes.find(f => f.id === fuelFormTankId) || null;
 
     const sortedFuel = [...fuelTransactions].sort(
       (a, b) =>
@@ -1781,44 +2148,47 @@ export default function EntityPage({ type }) {
     return (
       <>
         {conflictBanner}
-        <Typography variant="h4" fontWeight={800} mb={1}>
-          حركات الوقود والأرصدة النظرية
-        </Typography>
-        <Typography color="text.secondary" mb={3}>
-          الأرصدة النظرية لكل أصل ونوع وقود، وحركات التزويد والتسويات (بلا أسعار أو تكاليف مالية)
-        </Typography>
+        <PageTitle
+          title="حركات الوقود والأرصدة النظرية"
+          subtitle="الأرصدة النظرية لكل أصل ونوع وقود، وحركات التزويد والتسويات (بلا أسعار أو تكاليف مالية)"
+          badge={<Chip size="small" color="primary" icon={<LocalGasStationRounded />} label={`${sortedFuel.length} حركة`} />}
+        />
 
         <Grid container spacing={2} mb={3}>
-          {eligibleAssets.map(a =>
-            fuelTypes.map(ft => {
-              const bal = calculateFuelBalance(
-                a.id,
-                ft.id,
-                fuelTransactions,
-                operationLogs,
-                fuelTypes
-              );
-              return (
-                <Grid size={{ xs: 12, sm: 6, md: 3 }} key={`${a.id}-${ft.id}`}>
-                  <Card>
-                    <CardContent>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        {a.asset_code} — {a.name} ({ft.name})
-                      </Typography>
-                      <Typography variant="h5" fontWeight={800} mt={0.5}>
-                        {bal} {ft.unit}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              );
-            })
+          {eligibleAssets.map(a => {
+            const ft = fuelTypes.find(x => x.id === a.fuel_type_id);
+            const tb = calculateTankBalance(a, fuelTransactions, operationLogs);
+            const bal = tb.balance;
+            const isLow = bal <= 20;
+            return (
+              <Grid size={{ xs: 12, sm: 6, md: 4 }} key={a.id}>
+                <Card sx={{ height: '100%' }} data-testid={`tank-card-${a.asset_code}`}>
+                  <Box sx={{ height: 4, bgcolor: isLow ? 'warning.main' : 'primary.main' }} />
+                  <CardContent sx={{ p: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      خزان {a.asset_code} — {a.name} ({ft?.name || '—'})
+                    </Typography>
+                    <Typography variant="h5" fontWeight={800} mt={0.75} className="tabular-nums">
+                      {bal} {ft?.unit || 'لتر'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }} className="tabular-nums">
+                      تزويد {tb.supplied} • تسوية +{tb.adjustedPlus} / −{tb.adjustedMinus} • استهلاك {tb.consumed}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
+          {!eligibleAssets.length && (
+            <Grid size={{ xs: 12 }}>
+              <Alert severity="info">لا توجد أصول لها خزان وقود. حدّد نوع الوقود في بطاقة الأصل.</Alert>
+            </Grid>
           )}
         </Grid>
 
         {canOperate && (
           <Paper sx={{ p: 2.5, mb: 3 }}>
-            <Typography variant="h6" mb={2}>
+            <Typography variant="h6" mb={2} fontWeight={800}>
               {fuelForm.id ? 'تعديل آخر حركة وقود' : 'إضافة حركة وقود'}
             </Typography>
             <Grid container spacing={2}>
@@ -1841,22 +2211,15 @@ export default function EntityPage({ type }) {
                 </FormControl>
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>نوع الوقود *</InputLabel>
-                  <Select
-                    label="نوع الوقود *"
-                    value={fuelForm.fuel_type_id}
-                    onChange={e => setFuelForm({ ...fuelForm, fuel_type_id: e.target.value })}
-                  >
-                    {fuelTypes
-                      .filter(ft => ft.status === 'active' || ft.id === fuelForm.fuel_type_id)
-                      .map(ft => (
-                        <MenuItem key={ft.id} value={ft.id}>
-                          {ft.name} ({ft.unit})
-                        </MenuItem>
-                      ))}
-                  </Select>
-                </FormControl>
+                <TextField
+                  fullWidth
+                  size="small"
+                  disabled
+                  label="خزان الأصل (نوع الوقود)"
+                  value={fuelFormTank ? `${fuelFormTank.name} (${fuelFormTank.unit})` : '—'}
+                  helperText="خزان واحد لكل أصل — من بطاقة الأصل"
+                  inputProps={{ 'data-testid': 'fuel-tank-type' }}
+                />
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
                 <FormControl fullWidth size="small">
@@ -1939,7 +2302,7 @@ export default function EntityPage({ type }) {
                   disabled={!canMutateOperate}
                   onClick={async () => {
                     await executeWithConflictGuard(
-                      () => service.saveFuel(fuelForm),
+                      () => service.saveFuel({ ...fuelForm, fuel_type_id: fuelFormTankId }),
                       'تم حفظ حركة الوقود'
                     );
                     setFuelForm({
@@ -1985,13 +2348,13 @@ export default function EntityPage({ type }) {
                 const isLast = latestByAsset.get(tx.asset_id) === tx.id;
                 return (
                   <TableRow key={tx.id} selected={highlightId === tx.id}>
-                    <TableCell>{tx.transaction_date}</TableCell>
-                    <TableCell>
+                    <TableCell className="tabular-nums">{tx.transaction_date}</TableCell>
+                    <TableCell fontWeight={700}>
                       {a?.asset_code} | {a?.name}
                     </TableCell>
                     <TableCell>{ft?.name || '—'}</TableCell>
                     <TableCell>{FUEL_TX_TYPES[tx.transaction_type] || tx.transaction_type}</TableCell>
-                    <TableCell>
+                    <TableCell className="tabular-nums">
                       <b>{tx.quantity}</b> {ft?.unit}
                     </TableCell>
                     <TableCell>
@@ -2060,12 +2423,11 @@ export default function EntityPage({ type }) {
     return (
       <>
         {conflictBanner}
-        <Typography variant="h4" fontWeight={800} mb={1}>
-          حركات الكلور والأرصدة النظرية
-        </Typography>
-        <Typography color="text.secondary" mb={3}>
-          إدارة استلام وتسويات الكلور للأصول المؤهلة وحساب الرصيد النظري تلقائيًا
-        </Typography>
+        <PageTitle
+          title="حركات الكلور والأرصدة النظرية"
+          subtitle="إدارة استلام وتسويات الكلور للأصول المؤهلة وحساب الرصيد النظري تلقائيًا"
+          badge={<Chip size="small" color="info" icon={<ScienceRounded />} label={`${sortedChl.length} حركة`} />}
+        />
 
         <Grid container spacing={2} mb={3}>
           {eligibleAssets.map(a => {
@@ -2073,12 +2435,13 @@ export default function EntityPage({ type }) {
             const bal = calculateChlorineBalance(a.id, chlorineTransactions, operationLogs);
             return (
               <Grid size={{ xs: 12, sm: 6, md: 3 }} key={a.id}>
-                <Card>
-                  <CardContent>
+                <Card sx={{ height: '100%' }}>
+                  <Box sx={{ height: 4, bgcolor: bal <= 5 ? 'warning.main' : 'info.main' }} />
+                  <CardContent sx={{ p: 2 }}>
                     <Typography variant="subtitle2" color="text.secondary">
                       {a.asset_code} — {a.name}
                     </Typography>
-                    <Typography variant="h5" fontWeight={800} mt={0.5}>
+                    <Typography variant="h5" fontWeight={800} mt={0.75} className="tabular-nums">
                       {bal} {c?.chlorine_unit || 'كجم'}
                     </Typography>
                   </CardContent>
@@ -2090,7 +2453,7 @@ export default function EntityPage({ type }) {
 
         {canOperate && (
           <Paper sx={{ p: 2.5, mb: 3 }}>
-            <Typography variant="h6" mb={2}>
+            <Typography variant="h6" mb={2} fontWeight={800}>
               {chlForm.id ? 'تعديل آخر حركة كلور' : 'إضافة حركة كلور'}
             </Typography>
             <Grid container spacing={2}>
@@ -2226,12 +2589,12 @@ export default function EntityPage({ type }) {
                 const isLast = latestByAsset.get(tx.asset_id) === tx.id;
                 return (
                   <TableRow key={tx.id} selected={highlightId === tx.id}>
-                    <TableCell>{tx.transaction_date}</TableCell>
-                    <TableCell>
+                    <TableCell className="tabular-nums">{tx.transaction_date}</TableCell>
+                    <TableCell fontWeight={700}>
                       {a?.asset_code} | {a?.name}
                     </TableCell>
                     <TableCell>{CHLORINE_TX_TYPES[tx.transaction_type] || tx.transaction_type}</TableCell>
-                    <TableCell>
+                    <TableCell className="tabular-nums">
                       <b>{tx.quantity}</b> {c?.chlorine_unit || 'كجم'}
                     </TableCell>
                     <TableCell>
@@ -2293,36 +2656,33 @@ export default function EntityPage({ type }) {
 
     return (
       <>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
-          <Box>
-            <Typography variant="h4" fontWeight={800}>
-              التقارير والتصدير متعدد النطاقات
-            </Typography>
-            <Typography color="text.secondary">
-              تقارير أصل واحد، تصنيف كامل، مجموعة أصول مختارة، أو جميع الأصول مع تصدير Excel وCSV وPDF/طباعة
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={1}>
-            <Button variant="outlined" onClick={() => exportAomsCSV(reportResult)}>
-              تصدير CSV
-            </Button>
-            <Button
-              variant="outlined"
-              color="secondary"
-              startIcon={<PictureAsPdfRounded />}
-              onClick={() => exportAomsPDF(reportResult, `النطاق: ${REPORT_SCOPE_LABELS[repFilters.scope] || repFilters.scope}`).catch(e => setNotice({ type: 'error', text: e.message }))}
-            >
-              طباعة / PDF
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<FileDownloadRounded />}
-              onClick={() => exportAomsExcel(reportResult, `النطاق: ${REPORT_SCOPE_LABELS[repFilters.scope] || repFilters.scope}`)}
-            >
-              تصدير Excel
-            </Button>
-          </Stack>
-        </Stack>
+        <PageTitle
+          title="التقارير والتصدير متعدد النطاقات"
+          subtitle="تقارير أصل واحد، تصنيف كامل، مجموعة أصول مختارة، أو جميع الأصول مع تصدير Excel وCSV وPDF/طباعة"
+          badge={<Chip size="small" color="primary" icon={<AssessmentRounded />} label={`${reportResult.rows.length} صف`} />}
+          action={
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Button variant="outlined" onClick={() => exportAomsCSV(reportResult)}>
+                تصدير CSV
+              </Button>
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<PictureAsPdfRounded />}
+                onClick={() => exportAomsPDF(reportResult, `النطاق: ${REPORT_SCOPE_LABELS[repFilters.scope] || repFilters.scope}`).catch(e => setNotice({ type: 'error', text: e.message }))}
+              >
+                طباعة / PDF
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<FileDownloadRounded />}
+                onClick={() => exportAomsExcel(reportResult, `النطاق: ${REPORT_SCOPE_LABELS[repFilters.scope] || repFilters.scope}`)}
+              >
+                تصدير Excel
+              </Button>
+            </Stack>
+          }
+        />
 
         <Paper sx={{ p: 2.5, mb: 3 }}>
           <Grid container spacing={2}>
@@ -2452,11 +2812,11 @@ export default function EntityPage({ type }) {
           </Grid>
         </Paper>
 
-        <Alert severity="info" sx={{ mb: 2 }}>
+        <Alert severity="info" sx={{ mb: 2.5 }}>
           <b data-testid="report-summary">{usageSummary}</b>
         </Alert>
 
-        <TableContainer component={Paper} sx={{ maxHeight: 600 }}>
+        <TableContainer component={Paper} sx={{ maxHeight: 620 }}>
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
@@ -2507,12 +2867,11 @@ export default function EntityPage({ type }) {
 
     return (
       <>
-        <Typography variant="h4" fontWeight={800} mb={1}>
-          البحث العالمي الشامل
-        </Typography>
-        <Typography color="text.secondary" mb={3}>
-          ابحث في التصنيفات، الأصول، المشغلين، سجلات التشغيل، الوقود، الكلور، والقيم الديناميكية
-        </Typography>
+        <PageTitle
+          title="البحث العالمي الشامل"
+          subtitle="ابحث في التصنيفات، الأصول، المشغلين، سجلات التشغيل، الوقود، الكلور، والقيم الديناميكية"
+          badge={<Chip size="small" color="primary" icon={<SearchRounded />} label={`${results.length} نتيجة`} />}
+        />
 
         <TextField
           fullWidth
@@ -2523,9 +2882,10 @@ export default function EntityPage({ type }) {
         />
 
         {Object.entries(grouped).map(([eType, list]) => (
-          <Card key={eType} sx={{ mb: 2 }}>
-            <CardContent>
-              <Typography variant="h6" mb={1.5} color="primary">
+          <Card key={eType} sx={{ mb: 2.5 }}>
+            <Box sx={{ height: 4, bgcolor: 'primary.main' }} />
+            <CardContent sx={{ p: 2.5 }}>
+              <Typography variant="h6" mb={1.5} color="primary" fontWeight={800}>
                 {entityLabels[eType] || eType} ({list.length})
               </Typography>
               <Stack spacing={1}>
@@ -2541,11 +2901,15 @@ export default function EntityPage({ type }) {
                     }
                     sx={{
                       p: 1.5,
-                      borderRadius: 2,
+                      borderRadius: 2.5,
                       bgcolor: 'action.hover',
+                      border: '1px solid',
+                      borderColor: 'divider',
                       cursor: 'pointer',
                       display: 'flex',
                       justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 1.5,
                     }}
                   >
                     <b>{item.title}</b>
@@ -2558,6 +2922,16 @@ export default function EntityPage({ type }) {
             </CardContent>
           </Card>
         ))}
+        {!globalQ.trim() && (
+          <Paper sx={{ p: 4, textAlign: 'center', bgcolor: 'action.hover' }}>
+            <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+              ابدأ بكتابة أي كلمة مفتاحية للبحث الفوري في جميع الكيانات الستة
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              يمكنك البحث برمز الأصل (مثل GEN-0001)، اسم المشغل، الموقع، الملاحظات، أو قيم الحقول الديناميكية.
+            </Typography>
+          </Paper>
+        )}
         {globalQ.trim() && results.length === 0 && (
           <Typography textAlign="center" color="text.secondary" p={4}>
             لا توجد نتائج مطابقة في أي من الكيانات الستة.
@@ -2573,11 +2947,14 @@ export default function EntityPage({ type }) {
     const auditPage = pageRows('audit_logs', auditLogs, '');
     return (
       <>
-        <Typography variant="h4" fontWeight={800} mb={2}>
-          الخط الزمني وسجل التدقيق
-        </Typography>
+        <PageTitle
+          title="الخط الزمني وسجل التدقيق"
+          subtitle="توثيق لحظي لجميع العمليات التشغيلية وسجل مراجعة التغييرات الإدارية (Before / After)"
+          badge={<Chip size="small" color="secondary" icon={<TimelineRounded />} label={`${timelineEvents.length} حدث`} />}
+        />
+
         {isAdmin && (
-          <Tabs value={timeTab} onChange={(_, v) => setTimeTab(v)} sx={{ mb: 2 }}>
+          <Tabs value={timeTab} onChange={(_, v) => setTimeTab(v)} sx={{ mb: 2.5 }}>
             <Tab label="الخط الزمني للأصول" />
             <Tab label="سجل التدقيق الإداري (Audit Before / After)" />
           </Tabs>
@@ -2608,7 +2985,7 @@ export default function EntityPage({ type }) {
                       }
                     }}
                   >
-                    <TableCell>{String(evt.created_at || '').slice(0, 19).replace('T', ' ')}</TableCell>
+                    <TableCell className="tabular-nums">{String(evt.created_at || '').slice(0, 19).replace('T', ' ')}</TableCell>
                     <TableCell>
                       <b>{evt.title}</b>
                     </TableCell>
@@ -2634,18 +3011,18 @@ export default function EntityPage({ type }) {
                 <TableBody>
                   {auditPage.rows.map(log => (
                     <TableRow key={log.id}>
-                      <TableCell>{String(log.created_at || '').slice(0, 19).replace('T', ' ')}</TableCell>
+                      <TableCell className="tabular-nums">{String(log.created_at || '').slice(0, 19).replace('T', ' ')}</TableCell>
                       <TableCell>
-                        <Chip size="small" label={log.action} />
+                        <Chip size="small" color="primary" label={log.action} />
                       </TableCell>
-                      <TableCell>{log.entity_type}</TableCell>
+                      <TableCell fontWeight={700}>{log.entity_type}</TableCell>
                       <TableCell>
-                        <code style={{ fontSize: 11 }}>
+                        <code style={{ fontSize: 11, direction: 'ltr', display: 'inline-block' }}>
                           {log.before_json ? JSON.stringify(log.before_json).slice(0, 120) : '—'}
                         </code>
                       </TableCell>
                       <TableCell>
-                        <code style={{ fontSize: 11 }}>
+                        <code style={{ fontSize: 11, direction: 'ltr', display: 'inline-block' }}>
                           {log.after_json ? JSON.stringify(log.after_json).slice(0, 120) : '—'}
                         </code>
                       </TableCell>
@@ -2669,28 +3046,32 @@ export default function EntityPage({ type }) {
   if (type === 'settings') {
     return (
       <>
-        <Typography variant="h4" fontWeight={800} mb={3}>
-          الإعدادات وأنواع الوقود
-        </Typography>
+        <PageTitle
+          title="الإعدادات وأنواع الوقود"
+          subtitle="تعريف وإدارة أنواع الوقود (إضافة / تعديل / تعطيل). لا يُحذف نوع مرتبط بخزان أصل أو بحركات؛ استخدم التعطيل"
+          badge={<Chip size="small" color="primary" icon={<SettingsRounded />} label={`${fuelTypes.length} نوع وقود`} />}
+        />
         {isAdmin && (
           <Paper sx={{ p: 2.5, mb: 3 }}>
-            <Typography variant="h6" mb={2}>
+            <Typography variant="h6" mb={2} fontWeight={800}>
               إدارة أنواع الوقود
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
+                fullWidth
                 size="small"
                 label="اسم الوقود (مثل: سولار / بنزين)"
                 value={ftForm.name}
                 onChange={e => setFtForm({ ...ftForm, name: e.target.value })}
               />
               <TextField
+                fullWidth
                 size="small"
                 label="الوحدة (مثل: لتر)"
                 value={ftForm.unit}
                 onChange={e => setFtForm({ ...ftForm, unit: e.target.value })}
               />
-              <FormControl size="small" sx={{ minWidth: 130 }}>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
                 <InputLabel>الحالة</InputLabel>
                 <Select
                   label="الحالة"
@@ -2704,6 +3085,7 @@ export default function EntityPage({ type }) {
               <Button
                 variant="contained"
                 disabled={!canMutateAdmin}
+                sx={{ flexShrink: 0 }}
                 onClick={async () => {
                   await executeWithConflictGuard(
                     () => service.saveFuelType(ftForm),
@@ -2724,6 +3106,7 @@ export default function EntityPage({ type }) {
               <TableRow>
                 <TableCell>اسم الوقود</TableCell>
                 <TableCell>الوحدة</TableCell>
+                <TableCell>خزانات الأصول المرتبطة</TableCell>
                 <TableCell>الحالة</TableCell>
                 {isAdmin && <TableCell>تعديل</TableCell>}
               </TableRow>
@@ -2731,8 +3114,11 @@ export default function EntityPage({ type }) {
             <TableBody>
               {fuelTypes.map(ft => (
                 <TableRow key={ft.id}>
-                  <TableCell>{ft.name}</TableCell>
+                  <TableCell fontWeight={700}>{ft.name}</TableCell>
                   <TableCell>{ft.unit}</TableCell>
+                  <TableCell className="tabular-nums" data-testid={`ft-linked-${ft.name}`}>
+                    {assets.filter(a => a.fuel_type_id === ft.id).length}
+                  </TableCell>
                   <TableCell>
                     <Chip
                       size="small"
@@ -2767,21 +3153,25 @@ export default function EntityPage({ type }) {
     }
     return (
       <>
-        <Typography variant="h4" fontWeight={800} mb={3}>
-          المستخدمون والصلاحيات (RBAC)
-        </Typography>
+        <PageTitle
+          title="المستخدمون والصلاحيات (RBAC)"
+          subtitle="إدارة حسابات المستخدمين وتوزيع الأدوار (مدير النظام، مشغل ميداني، مراقب)"
+          badge={<Chip size="small" color="primary" icon={<ManageAccountsRounded />} label={`${profiles.length} مستخدم`} />}
+        />
         <Paper sx={{ p: 2.5, mb: 3 }}>
-          <Typography variant="h6" mb={2}>
+          <Typography variant="h6" mb={2} fontWeight={800}>
             {userForm.id ? 'تعديل صلاحيات وحالة المستخدم' : 'إضافة / دعوة مستخدم'}
           </Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
+              fullWidth
               size="small"
               label="الاسم الكامل *"
               value={userForm.full_name}
               onChange={e => setUserForm({ ...userForm, full_name: e.target.value })}
             />
             <TextField
+              fullWidth
               size="small"
               label="البريد الإلكتروني"
               value={userForm.email}
@@ -2813,6 +3203,7 @@ export default function EntityPage({ type }) {
             <Button
               variant="contained"
               disabled={!canMutateAdmin}
+              sx={{ flexShrink: 0 }}
               onClick={async () => {
                 await executeWithConflictGuard(
                   () => service.saveProfile(userForm),
@@ -2846,7 +3237,7 @@ export default function EntityPage({ type }) {
             <TableBody>
               {profiles.map(p => (
                 <TableRow key={p.id}>
-                  <TableCell>{p.full_name}</TableCell>
+                  <TableCell fontWeight={700}>{p.full_name}</TableCell>
                   <TableCell>{p.email || '—'}</TableCell>
                   <TableCell>
                     <Chip size="small" color="primary" label={p.role} />
@@ -2883,67 +3274,75 @@ export default function EntityPage({ type }) {
     }
     return (
       <>
-        <Typography variant="h4" fontWeight={800} mb={1}>
-          النسخ الاحتياطي والاستعادة الذرية
-        </Typography>
-        <Typography color="text.secondary" mb={3}>
-          تصدير شامل لجميع الكيانات المعتمدة واستعادة ذرية مسبوقة بمعاينة ونسخة أمان تلقائية
-        </Typography>
+        <PageTitle
+          title="النسخ الاحتياطي والاستعادة الذرية"
+          subtitle="تصدير شامل لجميع الكيانات المعتمدة واستعادة ذرية مسبوقة بمعاينة ونسخة أمان تلقائية"
+          badge={<Chip size="small" color="primary" icon={<BackupRounded />} label="Schema v2.0" />}
+        />
 
-        <Stack direction="row" spacing={2} mb={3}>
-          <Button
-            variant="contained"
-            startIcon={<BackupRounded />}
-            disabled={!canMutateAdmin}
-            onClick={async () => {
-              try {
-                const doc = await service.backup();
-                downloadJsonFile(doc, `aoms-v2-backup-${stamp()}.json`);
-              } catch (e) {
-                setNotice({ type: 'error', text: e.message });
-              }
-            }}
-          >
-            تنزيل نسخة احتياطية شاملة (JSON)
-          </Button>
-          <input
-            hidden
-            ref={backupFileRef}
-            type="file"
-            accept="application/json"
-            onChange={async e => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (!f) return;
-              try {
-                const raw = await f.text();
-                const parsed = JSON.parse(raw);
-                const preview = service.previewBackup(parsed, f.size || raw.length);
-                setBackupDoc(parsed);
-                setBackupPreview(preview);
-              } catch {
-                setBackupPreview({
-                  valid: false,
-                  errors: ['الملف التالف ليس ملف JSON صالحًا'],
-                  counts: {},
-                });
-              }
-            }}
-          />
-          <Button
-            variant="outlined"
-            startIcon={<RestoreRounded />}
-            disabled={!canMutateAdmin}
-            onClick={() => backupFileRef.current?.click()}
-          >
-            اختيار ملف نسخة احتياطية للمعاينة والاستعادة
-          </Button>
-        </Stack>
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" fontWeight={800} mb={1}>
+            إجراءات النسخ الاحتياطي والاستعادة
+          </Typography>
+          <Typography variant="body2" color="text.secondary" mb={2.5}>
+            تتضمن النسخة الاحتياطية جميع الجداول الـ14 المعتمدة وعلاقاتها المرجعية، وتُفحص بالكامل قبل تنفيذ الاستعادة الذرية داخل معاملة واحدة.
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <Button
+              variant="contained"
+              startIcon={<BackupRounded />}
+              disabled={!canMutateAdmin}
+              onClick={async () => {
+                try {
+                  const doc = await service.backup();
+                  downloadJsonFile(doc, `aoms-v2-backup-${stamp()}.json`);
+                } catch (e) {
+                  setNotice({ type: 'error', text: e.message });
+                }
+              }}
+            >
+              تنزيل نسخة احتياطية شاملة (JSON)
+            </Button>
+            <input
+              hidden
+              ref={backupFileRef}
+              type="file"
+              accept="application/json"
+              onChange={async e => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (!f) return;
+                try {
+                  const raw = await f.text();
+                  const parsed = JSON.parse(raw);
+                  const preview = service.previewBackup(parsed, f.size || raw.length);
+                  setBackupDoc(parsed);
+                  setBackupPreview(preview);
+                } catch {
+                  setBackupPreview({
+                    valid: false,
+                    errors: ['الملف التالف ليس ملف JSON صالحًا'],
+                    counts: {},
+                  });
+                }
+              }}
+            />
+            <Button
+              variant="outlined"
+              startIcon={<RestoreRounded />}
+              disabled={!canMutateAdmin}
+              onClick={() => backupFileRef.current?.click()}
+            >
+              اختيار ملف نسخة احتياطية للمعاينة والاستعادة
+            </Button>
+          </Stack>
+        </Paper>
 
         {backupPreview && (
           <Card>
-            <CardContent>
-              <Typography variant="h6" mb={1.5}>
+            <Box sx={{ height: 5, bgcolor: backupPreview.valid ? 'success.main' : 'error.main' }} />
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="h6" mb={1.5} fontWeight={800}>
                 معاينة ملف النسخة الاحتياطية قبل التنفيذ
               </Typography>
               {!backupPreview.valid ? (
@@ -2957,17 +3356,25 @@ export default function EntityPage({ type }) {
                 </Alert>
               ) : (
                 <>
-                  <Alert severity="success" sx={{ mb: 2 }}>
+                  <Alert severity="success" sx={{ mb: 2.5 }}>
                     بنية الملف وجميع المراجع صالحة وجاهزة للاستعادة الذرية.
                   </Alert>
-                  <Grid container spacing={1.5} mb={2}>
+                  <Grid container spacing={1.5} mb={2.5}>
                     {Object.entries(backupPreview.counts).map(([k, count]) => (
                       <Grid size={{ xs: 6, sm: 3 }} key={k}>
-                        <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: 'action.hover' }}>
-                          <Typography variant="caption" color="text.secondary">
-                            {k}
+                        <Box
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 2.5,
+                            bgcolor: 'action.hover',
+                            border: '1px solid',
+                            borderColor: 'divider',
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {BACKUP_ENTITY_LABELS[k] || k} ({k})
                           </Typography>
-                          <Typography variant="h6" fontWeight={800}>
+                          <Typography variant="h6" fontWeight={800} className="tabular-nums">
                             {count}
                           </Typography>
                         </Box>

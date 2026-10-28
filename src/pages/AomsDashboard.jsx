@@ -14,20 +14,27 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
   CategoryRounded,
+  CheckCircleRounded,
   HistoryRounded,
   LocalGasStationRounded,
+  NotificationsActiveRounded,
   PrecisionManufacturingRounded,
   ScienceRounded,
+  SpeedRounded,
   TimelineRounded,
+  TuneRounded,
+  WaterDropRounded,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAoms } from '../context/AomsContext';
-import { StatCard } from '../components/Common';
+import { PageTitle, StatCard } from '../components/Common';
+import { DailyWaterChart, FuelByAssetChart, HoursByAssetChart } from '../components/AomsCharts';
 import {
   calculateChlorineBalance,
-  calculateFuelBalance,
+  calculateTankBalance,
   roundNum,
   STATUS,
 } from '../domain/models';
@@ -90,24 +97,76 @@ export default function AomsDashboard() {
     return filteredAssets.filter(a => !loggedIds.has(a.id));
   }, [filteredAssets, operationLogs]);
 
+  // Water: total pumped vs distributed by tankers vs network (pump logs only).
+  const waterStats = useMemo(() => {
+    let total = 0;
+    let tankers = 0;
+    let network = 0;
+    let trips = 0;
+    const byDay = new Map();
+    for (const l of filteredLogs) {
+      if (l.water_total == null) continue;
+      const w = Number(l.water_total || 0);
+      const d = Number(l.distributed_quantity || 0);
+      const n = l.network_quantity != null ? Number(l.network_quantity) : roundNum(w - d);
+      total += w;
+      tankers += d;
+      network += n;
+      trips += Number(l.trips_count || 0);
+      const day = byDay.get(l.operation_date) || { date: l.operation_date, network: 0, tankers: 0 };
+      day.network = roundNum(day.network + n);
+      day.tankers = roundNum(day.tankers + d);
+      byDay.set(l.operation_date, day);
+    }
+    return {
+      total: roundNum(total),
+      tankers: roundNum(tankers),
+      network: roundNum(network),
+      trips,
+      daily: [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-31),
+    };
+  }, [filteredLogs]);
+
+  const perAsset = useMemo(() => {
+    const fuel = [];
+    const hours = [];
+    for (const a of filteredAssets) {
+      const c = catMap.get(a.category_id);
+      const logs = filteredLogs.filter(l => l.asset_id === a.id);
+      if (c?.supports_fuel && a.fuel_type_id) {
+        fuel.push({
+          code: a.asset_code,
+          label: `${a.asset_code} — ${a.name}`,
+          fuel: roundNum(logs.reduce((s, l) => s + Number(l.fuel_consumed || 0), 0)),
+        });
+      }
+      if (c?.uses_meter && String(c.meter_unit || '').includes('ساعة')) {
+        hours.push({
+          code: a.asset_code,
+          label: `${a.asset_code} — ${a.name}`,
+          hours: roundNum(logs.reduce((s, l) => s + Number(l.usage_value ?? l.net_operation_delta ?? 0), 0)),
+        });
+      }
+    }
+    return { fuel, hours };
+  }, [filteredAssets, filteredLogs, catMap]);
+
   const lowBalanceAlerts = useMemo(() => {
     const alerts = [];
     for (const a of filteredAssets) {
       const c = catMap.get(a.category_id);
-      if (c?.supports_fuel) {
-        for (const ft of fuelTypes.filter(x => x.status === STATUS.ACTIVE)) {
-          const hasTx = fuelTransactions.some(t => t.asset_id === a.id && t.fuel_type_id === ft.id);
-          if (hasTx) {
-            const bal = calculateFuelBalance(a.id, ft.id, fuelTransactions, operationLogs, fuelTypes);
-            if (bal <= 20) {
-              alerts.push({
-                id: `fuel-${a.id}-${ft.id}`,
-                asset: a,
-                label: `${a.asset_code} — رصيد ${ft.name}: ${bal} ${ft.unit}`,
-                tab: 'fuel_transactions',
-              });
-            }
-          }
+      // One tank per asset: the tank's fuel type comes from the asset card.
+      if (c?.supports_fuel && a.fuel_type_id) {
+        const ft = fuelTypes.find(x => x.id === a.fuel_type_id);
+        const tb = calculateTankBalance(a, fuelTransactions, operationLogs);
+        const hasMovement = tb.supplied || tb.adjustedPlus || tb.adjustedMinus || tb.consumed;
+        if (hasMovement && tb.balance <= 20) {
+          alerts.push({
+            id: `fuel-${a.id}`,
+            asset: a,
+            label: `${a.asset_code} — رصيد خزان ${ft?.name || ''}: ${tb.balance} ${ft?.unit || 'لتر'}`,
+            tab: 'fuel_transactions',
+          });
         }
       }
       if (c?.supports_chlorine) {
@@ -133,15 +192,27 @@ export default function AomsDashboard() {
 
   return (
     <>
-      <Typography variant="h4" mb={1} fontWeight={800}>
-        لوحة التحكم
-      </Typography>
-      <Typography color="text.secondary" mb={3}>
-        مؤشرات الأداء والتشغيل والأرصدة النظرية للأصول والمعدات
-      </Typography>
+      <PageTitle
+        title="لوحة التحكم"
+        subtitle="مؤشرات الأداء والتشغيل والأرصدة النظرية للأصول والمعدات"
+        badge={
+          <Chip
+            size="small"
+            color="primary"
+            icon={<SpeedRounded fontSize="small" />}
+            label="مراقبة تشغيلية فورية"
+          />
+        }
+      />
 
       <Card sx={{ mb: 3 }}>
-        <CardContent>
+        <CardContent sx={{ p: 2.5 }}>
+          <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+            <TuneRounded color="primary" fontSize="small" />
+            <Typography variant="subtitle1" fontWeight={800}>
+              تصفية مؤشرات الأداء والنطاق الزمني
+            </Typography>
+          </Stack>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <FormControl fullWidth size="small">
@@ -213,36 +284,51 @@ export default function AomsDashboard() {
           <StatCard
             title="التصنيفات النشطة"
             value={`${activeCategoriesCount} / ${categories.length}`}
+            subtitle="تصنيفات الأصول المعتمدة"
             icon={<CategoryRounded fontSize="inherit" />}
+            color="primary.main"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <StatCard
             title="الأصول النشطة / الإجمالي"
             value={`${activeAssetsCount} / ${filteredAssets.length}`}
+            subtitle="المعدات الجاهزة للتشغيل"
             icon={<PrecisionManufacturingRounded fontSize="inherit" />}
+            color="info.main"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <StatCard
             title="سجلات التشغيل (الفترة)"
             value={filteredLogs.length}
+            subtitle="سجلات موثقة ضمن الفلتر"
             icon={<HistoryRounded fontSize="inherit" />}
+            color="success.main"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <StatCard
             title="الأحداث الموثقة"
             value={timelineEvents.length}
+            subtitle="في الخط الزمني الموحد"
             icon={<TimelineRounded fontSize="inherit" />}
             color="secondary.main"
           />
         </Grid>
       </Grid>
 
-      <Card sx={{ mt: 2 }}>
-        <CardContent>
-          <Typography variant="h6" mb={1.5}>
+      <Card
+        sx={{
+          mt: 2.5,
+          background: theme =>
+            theme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, rgba(20, 184, 166, 0.12) 0%, rgba(15, 26, 44, 0.95) 100%)'
+              : 'linear-gradient(135deg, rgba(15, 118, 110, 0.06) 0%, #ffffff 100%)',
+        }}
+      >
+        <CardContent sx={{ p: 2.5 }}>
+          <Typography variant="h6" mb={1.5} fontWeight={800}>
             إجمالي التشغيل حسب وحدة العداد (مفصول حسب الوحدة منعًا للجمع المضلل)
           </Typography>
           <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
@@ -251,7 +337,7 @@ export default function AomsDashboard() {
                 key={unit}
                 color="primary"
                 label={`${unit}: ${val.toLocaleString('ar')}`}
-                sx={{ fontWeight: 700, fontSize: '0.9rem', py: 2 }}
+                sx={{ fontWeight: 800, fontSize: '0.92rem', py: 2.25, px: 1 }}
               />
             ))}
             {Object.keys(usageByUnit).length === 0 && (
@@ -263,14 +349,78 @@ export default function AomsDashboard() {
         </CardContent>
       </Card>
 
+      <Card sx={{ mt: 2.5 }} data-testid="kpi-water">
+        <Box sx={{ height: 5, bgcolor: 'info.main' }} />
+        <CardContent sx={{ p: 2.5 }}>
+          <Stack direction="row" spacing={1} alignItems="center" mb={1.5}>
+            <WaterDropRounded color="info" fontSize="small" />
+            <Typography variant="h6" fontWeight={800}>
+              المياه المنتجة: الصهاريج مقابل الشبكة
+            </Typography>
+          </Stack>
+          <Grid container spacing={2}>
+            {[
+              { k: 'total', label: 'إجمالي المياه', v: waterStats.total, tone: 'info' },
+              { k: 'tankers', label: `الصهاريج (${waterStats.trips} نقلة)`, v: waterStats.tankers, tone: 'secondary' },
+              { k: 'network', label: 'الشبكة', v: waterStats.network, tone: 'primary' },
+            ].map(x => (
+              <Grid size={{ xs: 12, sm: 4 }} key={x.k}>
+                <Box
+                  data-testid={`kpi-water-${x.k}`}
+                  sx={{
+                    p: 1.75,
+                    borderRadius: 3,
+                    border: '1px solid',
+                    borderColor: theme => alpha(theme.palette[x.tone].main, 0.3),
+                    bgcolor: theme => alpha(theme.palette[x.tone].main, theme.palette.mode === 'dark' ? 0.14 : 0.06),
+                  }}
+                >
+                  <Typography variant="body2" color="text.secondary" fontWeight={700}>
+                    {x.label}
+                  </Typography>
+                  <Typography variant="h5" fontWeight={900} className="tabular-nums">
+                    {x.v.toLocaleString('ar')} م³
+                  </Typography>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+          {waterStats.total > 0 && (
+            <Box
+              sx={{ mt: 2, height: 10, borderRadius: 5, overflow: 'hidden', display: 'flex', bgcolor: 'action.hover' }}
+              aria-label="نسبة الصهاريج إلى الشبكة"
+            >
+              <Box sx={{ width: `${(waterStats.network / waterStats.total) * 100}%`, bgcolor: 'primary.main' }} />
+              <Box sx={{ width: `${(waterStats.tankers / waterStats.total) * 100}%`, bgcolor: 'secondary.main' }} />
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      <Grid container spacing={2} mt={1}>
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <DailyWaterChart data={waterStats.daily} />
+        </Grid>
+        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+          <FuelByAssetChart data={perAsset.fuel} />
+        </Grid>
+        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+          <HoursByAssetChart data={perAsset.hours} />
+        </Grid>
+      </Grid>
+
       <Grid container spacing={2} mt={1}>
         <Grid size={{ xs: 12, md: 4 }}>
           <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography variant="h6" mb={2}>
-                أحدث الأحداث التشغيلية
-              </Typography>
-              <Stack spacing={1}>
+            <Box sx={{ height: 4, bgcolor: 'primary.main' }} />
+            <CardContent sx={{ p: 2.5 }}>
+              <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                <TimelineRounded color="primary" fontSize="small" />
+                <Typography variant="h6" fontWeight={800}>
+                  أحدث الأحداث التشغيلية
+                </Typography>
+              </Stack>
+              <Stack spacing={1.25}>
                 {timelineEvents.slice(0, 6).map(evt => (
                   <Box
                     key={evt.id}
@@ -278,18 +428,24 @@ export default function AomsDashboard() {
                       evt.asset_id && nav(`/operation_logs?asset=${evt.asset_id}`)
                     }
                     sx={{
-                      p: 1.25,
-                      borderRadius: 2,
+                      p: 1.5,
+                      borderRadius: 3,
                       bgcolor: 'action.hover',
+                      border: '1px solid',
+                      borderColor: 'divider',
                       cursor: evt.asset_id ? 'pointer' : 'default',
                       display: 'flex',
                       justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 1.5,
                     }}
                   >
-                    <span>{evt.title}</span>
-                    <Typography variant="caption" color="text.secondary">
-                      {String(evt.created_at || '').slice(0, 10)}
-                    </Typography>
+                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{evt.title}</span>
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={String(evt.created_at || '').slice(0, 10)}
+                    />
                   </Box>
                 ))}
                 {!timelineEvents.length && (
@@ -302,20 +458,32 @@ export default function AomsDashboard() {
 
         <Grid size={{ xs: 12, md: 4 }}>
           <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography variant="h6" mb={2}>
-                أصول بلا سجلات تشغيل
-              </Typography>
+            <Box sx={{ height: 4, bgcolor: 'info.main' }} />
+            <CardContent sx={{ p: 2.5 }}>
+              <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                <PrecisionManufacturingRounded color="info" fontSize="small" />
+                <Typography variant="h6" fontWeight={800}>
+                  أصول بلا سجلات تشغيل
+                </Typography>
+              </Stack>
               <Stack direction="row" flexWrap="wrap" gap={1}>
                 {assetsWithoutLogs.map(a => (
                   <Chip
                     key={a.id}
+                    color="info"
+                    variant="outlined"
                     label={`${a.asset_code} | ${a.name}`}
                     onClick={() => nav(`/operation_logs?asset=${a.id}&new=1`)}
+                    sx={{ fontWeight: 700 }}
                   />
                 ))}
                 {!assetsWithoutLogs.length && (
-                  <Typography color="success.main">جميع الأصول ضمن النطاق لديها سجلات.</Typography>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'success.main' }}>
+                    <CheckCircleRounded fontSize="small" />
+                    <Typography color="success.main" fontWeight={700}>
+                      جميع الأصول ضمن النطاق لديها سجلات.
+                    </Typography>
+                  </Stack>
                 )}
               </Stack>
             </CardContent>
@@ -324,11 +492,15 @@ export default function AomsDashboard() {
 
         <Grid size={{ xs: 12, md: 4 }}>
           <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography variant="h6" mb={2}>
-                تنبيهات أرصدة الوقود والكلور المنخفضة
-              </Typography>
-              <Stack spacing={1}>
+            <Box sx={{ height: 4, bgcolor: 'warning.main' }} />
+            <CardContent sx={{ p: 2.5 }}>
+              <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                <NotificationsActiveRounded color="warning" fontSize="small" />
+                <Typography variant="h6" fontWeight={800}>
+                  تنبيهات أرصدة الوقود والكلور المنخفضة
+                </Typography>
+              </Stack>
+              <Stack spacing={1.25}>
                 {lowBalanceAlerts.map(item => (
                   <Alert
                     key={item.id}
@@ -347,9 +519,12 @@ export default function AomsDashboard() {
                   </Alert>
                 ))}
                 {!lowBalanceAlerts.length && (
-                  <Typography color="success.main">
-                    لا توجد أرصدة وقود أو كلور منخفضة حاليًا.
-                  </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'success.main' }}>
+                    <CheckCircleRounded fontSize="small" />
+                    <Typography color="success.main" fontWeight={700}>
+                      لا توجد أرصدة وقود أو كلور منخفضة حاليًا.
+                    </Typography>
+                  </Stack>
                 )}
               </Stack>
             </CardContent>

@@ -263,7 +263,7 @@ async function main() {
     rejects(su.query(`delete from public.category_fields where id=$1`, [fields.f_num.id])));
 
   // ---------- 6. operation logs: last-record-only, dates, versions ----------
-  const newAsset = async name => (await rpc(admin, 'create_asset', [JSON.stringify({ category_id: cat.id, name }), '{}'])).r;
+  const newAsset = async name => (await rpc(admin, 'create_asset', [JSON.stringify({ category_id: cat.id, name, fuel_type_id: fuel.id }), '{}'])).r;
   for (let i = 5; i <= 10; i++) assets[i] = await newAsset(`أصل سيناريو ${i}`);
   const A = assets[5];
   const fs = await rpc(admin, 'save_fuel_transaction', [JSON.stringify({ asset_id: A.id, fuel_type_id: fuel.id, transaction_date: day(10), transaction_type: 'supply', quantity: 100 })]);

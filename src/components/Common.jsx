@@ -46,63 +46,117 @@ export class ErrorBoundary extends Component {
   }
 }
 
-export const PageTitle = ({ title, subtitle, action }) => (
+export const PageTitle = ({ title, subtitle, action, badge }) => (
   <Box
     sx={{
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
       mb: 3,
+      p: { xs: 2, md: 2.5 },
+      borderRadius: 4,
+      background: theme =>
+        theme.palette.mode === 'dark'
+          ? 'linear-gradient(135deg, rgba(20, 184, 166, 0.14) 0%, rgba(15, 26, 44, 0.9) 100%)'
+          : 'linear-gradient(135deg, rgba(15, 118, 110, 0.08) 0%, rgba(255, 255, 255, 0.95) 100%)',
+      border: '1px solid',
+      borderColor: theme => alpha(theme.palette.primary.main, 0.2),
       gap: 2,
       flexWrap: 'wrap',
     }}
   >
-    <Box>
-      <Typography variant="h4">{title}</Typography>
-      <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-        {subtitle}
-      </Typography>
+    <Box sx={{ minWidth: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap' }}>
+        <Typography variant="h4" sx={{ fontWeight: 800, fontSize: { xs: '1.45rem', md: '1.85rem' } }}>
+          {title}
+        </Typography>
+        {badge}
+      </Box>
+      {subtitle && (
+        <Typography color="text.secondary" sx={{ mt: 0.5, fontSize: { xs: '0.88rem', md: '0.96rem' } }}>
+          {subtitle}
+        </Typography>
+      )}
     </Box>
     {action}
   </Box>
 );
 
-export const StatCard = ({ title, value, icon, color = 'primary.main' }) => (
-  <Card sx={{ position: 'relative', overflow: 'hidden', height: '100%' }}>
-    <Box sx={{ height: 4, bgcolor: color, width: '100%' }} />
-    <CardContent sx={{ p: 2.5 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1.5 }}>
-        <Box>
-          <Typography color="text.secondary" fontWeight={600} variant="body2">
-            {title}
-          </Typography>
-          <Typography variant="h4" sx={{ mt: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {value}
-          </Typography>
+export const StatCard = ({ title, value, subtitle, icon, color = 'primary.main' }) => {
+  const resolveTone = theme => {
+    if (color === 'secondary.main' || color === 'warning.main') return theme.palette.secondary.main;
+    if (color === 'info.main') return theme.palette.info.main;
+    if (color === 'success.main') return theme.palette.success.main;
+    if (color === 'error.main') return theme.palette.error.main;
+    return theme.palette.primary.main;
+  };
+
+  return (
+    <Card
+      sx={{
+        position: 'relative',
+        overflow: 'hidden',
+        height: '100%',
+        background: theme =>
+          theme.palette.mode === 'dark'
+            ? `linear-gradient(145deg, ${alpha(resolveTone(theme), 0.14)} 0%, ${theme.palette.background.paper} 65%)`
+            : `linear-gradient(145deg, ${alpha(resolveTone(theme), 0.07)} 0%, #ffffff 65%)`,
+        borderColor: theme => alpha(resolveTone(theme), 0.24),
+      }}
+    >
+      <Box
+        sx={{
+          height: 5,
+          bgcolor: color,
+          width: '100%',
+        }}
+      />
+      <CardContent sx={{ p: 2.5 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1.5 }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography color="text.secondary" fontWeight={700} variant="body2">
+              {title}
+            </Typography>
+            <Typography
+              variant="h4"
+              sx={{
+                mt: 1,
+                fontWeight: 800,
+                fontVariantNumeric: 'tabular-nums',
+                fontSize: { xs: '1.55rem', md: '1.85rem' },
+              }}
+            >
+              {value}
+            </Typography>
+            {subtitle && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                {subtitle}
+              </Typography>
+            )}
+          </Box>
+          <Box
+            sx={{
+              color,
+              fontSize: 30,
+              width: 54,
+              height: 54,
+              borderRadius: 3.5,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              bgcolor: theme => alpha(resolveTone(theme), theme.palette.mode === 'dark' ? 0.22 : 0.14),
+              border: '1px solid',
+              borderColor: theme => alpha(resolveTone(theme), 0.28),
+              flexShrink: 0,
+            }}
+          >
+            {icon}
+          </Box>
         </Box>
-        <Box
-          sx={{
-            color,
-            fontSize: 32,
-            width: 52,
-            height: 52,
-            borderRadius: 3.5,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: theme =>
-              color === 'secondary.main'
-                ? alpha(theme.palette.secondary.main, 0.14)
-                : alpha(theme.palette.primary.main, 0.12),
-            flexShrink: 0,
-          }}
-        >
-          {icon}
-        </Box>
-      </Box>
-    </CardContent>
-  </Card>
-);
+      </CardContent>
+    </Card>
+  );
+};
 
 export const StatusChip = ({ active }) => (
   <Chip size="small" color={active ? 'success' : 'default'} label={active ? 'نشط' : 'غير نشط'} />

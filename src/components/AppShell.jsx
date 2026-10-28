@@ -45,7 +45,7 @@ import { canAdmin } from '../domain/models';
 import { isFileSystemAccessSupported } from '../services/backupService';
 import { WipeDialog } from './Common';
 
-const width = 275;
+const width = 285;
 
 const baseLinks = [
   ['/', 'لوحة التحكم', DashboardRounded, false],
@@ -62,6 +62,12 @@ const baseLinks = [
   ['/users', 'المستخدمون والصلاحيات', ManageAccountsRounded, true],
   ['/backup', 'النسخ الاحتياطي والاستعادة', BackupRounded, true],
 ];
+
+const ROLE_ARABIC = {
+  admin: 'مدير النظام',
+  operator: 'مشغل ميداني',
+  viewer: 'مراقب (قراءة فقط)',
+};
 
 export default function AppShell({ mode = 'light', setMode }) {
   const mobile = useMediaQuery('(max-width:900px)');
@@ -82,20 +88,65 @@ export default function AppShell({ mode = 'light', setMode }) {
   const visibleLinks = baseLinks.filter(([, , , adminOnly]) => !adminOnly || isAdmin);
 
   const menu = (
-    <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <Box
+      sx={{
+        p: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: theme =>
+          theme.palette.mode === 'dark'
+            ? 'linear-gradient(180deg, #0d1829 0%, #091220 100%)'
+            : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+      }}
+    >
       <Box
         sx={{
-          p: 1.5,
-          borderRadius: 3,
-          bgcolor: theme => alpha(theme.palette.primary.main, 0.08),
+          p: 1.75,
+          borderRadius: 3.5,
+          background: theme =>
+            theme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, rgba(20, 184, 166, 0.22) 0%, rgba(14, 165, 233, 0.14) 100%)'
+              : 'linear-gradient(135deg, rgba(15, 118, 110, 0.12) 0%, rgba(2, 132, 199, 0.08) 100%)',
+          border: '1px solid',
+          borderColor: theme => alpha(theme.palette.primary.main, 0.24),
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          gap: 1,
         }}
       >
-        <Typography variant="h6" color="primary" sx={{ fontWeight: 800 }}>
-          ⚙️ AOMS V2
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box
+            sx={{
+              width: 36,
+              height: 36,
+              borderRadius: 2.5,
+              background: 'linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 800,
+              fontSize: '1.05rem',
+              boxShadow: '0 4px 12px rgba(15, 118, 110, 0.35)',
+            }}
+          >
+            ⚙️
+          </Box>
+          <Box>
+            <Typography
+              variant="h6"
+              color="primary"
+              sx={{ fontWeight: 800, lineHeight: 1.25, fontSize: '0.95rem' }}
+            >
+              إدارة وتشغيل الأصول والمعدات
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+              بوابة الأصول والتشغيل
+            </Typography>
+          </Box>
+        </Box>
         <Chip
           size="small"
           color={online ? 'success' : 'warning'}
@@ -103,7 +154,7 @@ export default function AppShell({ mode = 'light', setMode }) {
         />
       </Box>
 
-      <List sx={{ mt: 1, flexGrow: 1, overflowY: 'auto' }}>
+      <List sx={{ mt: 1.5, flexGrow: 1, overflowY: 'auto', pr: 0.25 }}>
         {visibleLinks.map(([to, t, IconComp]) => (
           <ListItemButton
             component={NavLink}
@@ -112,8 +163,10 @@ export default function AppShell({ mode = 'light', setMode }) {
             key={to}
             onClick={() => setOpen(false)}
             sx={{
-              mb: 0.5,
-              borderRadius: 2.5,
+              mb: 0.6,
+              py: 1.1,
+              px: 1.5,
+              borderRadius: 3,
               '&.active': {
                 bgcolor: 'primary.main',
                 color: '#fff',
@@ -121,7 +174,7 @@ export default function AppShell({ mode = 'light', setMode }) {
               },
             }}
           >
-            <ListItemIcon>
+            <ListItemIcon sx={{ minWidth: 34, color: 'text.secondary' }}>
               <IconComp fontSize="small" />
             </ListItemIcon>
             <ListItemText primary={t} />
@@ -131,124 +184,193 @@ export default function AppShell({ mode = 'light', setMode }) {
 
       {app && (
         <>
-      <Button
-        fullWidth
-        variant="outlined"
-        startIcon={<CloudDownloadRounded />}
-        onClick={app?.manualBackup}
-        sx={{ mt: 1 }}
-      >
-        نسخة احتياطية
-      </Button>
-      <Button
-        fullWidth
-        color="error"
-        variant="outlined"
-        startIcon={<DeleteForeverRounded />}
-        onClick={() => {
-          setOpen(false);
-          setWipe(true);
-        }}
-        sx={{ mt: 1 }}
-      >
-        مسح شامل
-      </Button>
-      {fileLinkSupported ? (
-        <Button
-          fullWidth
-          variant="outlined"
-          size="small"
-          onClick={app?.linkBackup}
-          sx={{ mt: 1 }}
-        >
-          ربط ملف نسخة احتياطية
-        </Button>
-      ) : (
-        <Typography variant="caption" component="div" color="text.secondary" sx={{ mt: 1 }}>
-          ربط ملف النسخة الاحتياطية غير مدعوم في هذا المتصفح
-        </Typography>
-      )}
+          <Button
+            fullWidth
+            variant="outlined"
+            startIcon={<CloudDownloadRounded />}
+            onClick={app?.manualBackup}
+            sx={{ mt: 1 }}
+          >
+            نسخة احتياطية
+          </Button>
+          <Button
+            fullWidth
+            color="error"
+            variant="outlined"
+            startIcon={<DeleteForeverRounded />}
+            onClick={() => {
+              setOpen(false);
+              setWipe(true);
+            }}
+            sx={{ mt: 1 }}
+          >
+            مسح شامل
+          </Button>
+          {fileLinkSupported ? (
+            <Button
+              fullWidth
+              variant="outlined"
+              size="small"
+              onClick={app?.linkBackup}
+              sx={{ mt: 1 }}
+            >
+              ربط ملف نسخة احتياطية
+            </Button>
+          ) : (
+            <Typography variant="caption" component="div" color="text.secondary" sx={{ mt: 1 }}>
+              ربط ملف النسخة الاحتياطية غير مدعوم في هذا المتصفح
+            </Typography>
+          )}
         </>
       )}
 
       <Box sx={{ mt: 'auto', pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
         {aoms && (
-          <>
-            <Typography variant="body2" fontWeight={700}>
-              {profile?.full_name || 'مستخدم'} ({profile?.role || 'viewer'})
-            </Typography>
+          <Box
+            sx={{
+              p: 1.25,
+              mb: 1.25,
+              borderRadius: 3,
+              bgcolor: theme => alpha(theme.palette.primary.main, 0.06),
+              border: '1px solid',
+              borderColor: 'divider',
+            }}
+          >
+            <Box sx={{ textAlign: 'center', mb: 0.75 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                <Box
+                  role="status"
+                  aria-label={online ? 'متصل بالإنترنت' : 'غير متصل بالإنترنت'}
+                  title={online ? 'متصل بالإنترنت' : 'غير متصل بالإنترنت'}
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    flexShrink: 0,
+                    borderRadius: '50%',
+                    bgcolor: online ? '#22c55e' : '#ef4444',
+                    boxShadow: online
+                      ? '0 0 0 3px rgba(34, 197, 94, 0.25), 0 0 10px 2px rgba(34, 197, 94, 0.75)'
+                      : '0 0 0 3px rgba(239, 68, 68, 0.25), 0 0 10px 2px rgba(239, 68, 68, 0.75)',
+                    transition: 'background-color 0.3s ease, box-shadow 0.3s ease',
+                  }}
+                />
+                <Typography variant="body2" fontWeight={800} sx={{ lineHeight: 1.25 }}>
+                  {profile?.full_name || 'مستخدم'}
+                </Typography>
+              </Box>
+              <Typography variant="caption" color="text.secondary" component="div">
+                {ROLE_ARABIC[profile?.role] || profile?.role || 'viewer'} ({profile?.role || 'viewer'})
+              </Typography>
+            </Box>
             <Button
               fullWidth
               size="small"
+              variant="outlined"
               startIcon={<LogoutRounded />}
               color="error"
               onClick={signOut}
-              sx={{ mt: 0.5, justifyContent: 'flex-start' }}
+              sx={{ mt: 0.5, justifyContent: 'center' }}
             >
               تسجيل الخروج
             </Button>
-          </>
+          </Box>
         )}
 
         <Box
           sx={{
-            mt: 1.25,
             p: 1.25,
             borderRadius: 2.5,
-            textAlign: 'right',
+            textAlign: 'center',
             color: 'text.secondary',
             bgcolor: 'action.hover',
+            border: '1px solid',
+            borderColor: 'divider',
           }}
         >
-          <Typography variant="caption" component="div">برمجة وتطوير:</Typography><Typography variant="caption" component="div" fontWeight={800} color="text.primary">م. محمد أبو زهري</Typography>
-          <Box
-            sx={{
-              mt: 0.5,
-              display: 'flex',
-              justifyContent: 'space-between',
-              fontSize: '0.7rem',
-            }}
-          >
-            <span>صُنع بكل حب وإتقان</span>
-            <span style={{ color: '#e11d48' }}>♥️</span>
-          </Box>
+          <Typography variant="caption" component="div">
+            برمجة وتطوير:
+          </Typography>
+          <Typography variant="caption" component="div" fontWeight={800} color="text.primary">
+            م. محمد أبو زهري
+          </Typography>
+          <Typography variant="caption" component="div" sx={{ mt: 0.5, fontSize: '0.72rem' }}>
+            صُنع بكل حب <span style={{ color: '#e11d48' }}>♥️</span>
+          </Typography>
         </Box>
       </Box>
     </Box>
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
       <AppBar
         position="fixed"
         elevation={0}
         sx={{
-          mr: mobile ? 0 : `${width}px`,
-          width: mobile ? '100% - 0px' : `calc(100% - ${width}px)`,
+          right: mobile ? 0 : `${width}px`,
+          left: 0,
+          width: mobile ? '100%' : `calc(100% - ${width}px)`,
           backdropFilter: 'blur(16px)',
-          bgcolor: theme => alpha(theme.palette.background.paper, 0.85),
+          bgcolor: theme => alpha(theme.palette.background.paper, 0.88),
           color: 'text.primary',
           borderBottom: '1px solid',
           borderColor: 'divider',
         }}
       >
-        <Toolbar>
-          {mobile && (
-            <IconButton color="inherit" onClick={() => setOpen(true)}>
-              <MenuRounded />
-            </IconButton>
-          )}
-          <Typography sx={{ flexGrow: 1, fontWeight: 800 }}>
-            نظام إدارة وتشغيل الأصول والمعدات
-          </Typography>
-          {setMode && (
-            <IconButton
-              aria-label="تغيير المظهر"
-              onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+        <Toolbar sx={{ justifyContent: 'space-between', gap: 1.5, minHeight: { xs: 60, md: 68 } }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+            {mobile && (
+              <IconButton
+                color="inherit"
+                aria-label="فتح القائمة"
+                onClick={() => setOpen(true)}
+                sx={{
+                  bgcolor: 'action.hover',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                }}
+              >
+                <MenuRounded />
+              </IconButton>
+            )}
+            <Typography
+              sx={{
+                fontWeight: 800,
+                fontSize: { xs: '0.95rem', sm: '1.1rem', md: '1.2rem' },
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
             >
-              {mode === 'dark' ? <LightModeRounded /> : <DarkModeRounded />}
-            </IconButton>
-          )}
+              نظام إدارة وتشغيل الأصول والمعدات
+            </Typography>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+            {!mobile && (
+              <Chip
+                size="small"
+                color={online ? 'success' : 'warning'}
+                variant="outlined"
+                label={online ? 'متصل بالسحابة اللحظية' : 'وضع القراءة فقط'}
+              />
+            )}
+            {setMode && (
+              <IconButton
+                aria-label="تغيير المظهر"
+                title={mode === 'dark' ? 'التبديل إلى الوضع الفاتح' : 'التبديل إلى الوضع الداكن'}
+                onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+                sx={{
+                  bgcolor: 'action.hover',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  color: mode === 'dark' ? 'secondary.main' : 'primary.main',
+                }}
+              >
+                {mode === 'dark' ? <LightModeRounded /> : <DarkModeRounded />}
+              </IconButton>
+            )}
+          </Box>
         </Toolbar>
       </AppBar>
 
@@ -270,14 +392,15 @@ export default function AppShell({ mode = 'light', setMode }) {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, md: 4 },
+          p: { xs: 2, sm: 3, md: 4 },
           mr: mobile ? 0 : `${width}px`,
-          mt: 8,
+          mt: { xs: 7.5, md: 8.5 },
           minWidth: 0,
+          maxWidth: '100%',
         }}
       >
         {!online && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
+          <Alert severity="warning" sx={{ mb: 2.5 }}>
             غير متصل — وضع القراءة فقط (جميع عمليات الإضافة والتعديل والحذف والاستعادة معطلة حتى عودة الاتصال)
           </Alert>
         )}

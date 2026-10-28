@@ -43,6 +43,11 @@ export function getAomsReportColumns(typeOrDynCols = 'operations', dynamicColumn
       { key: 'net_operation_delta', label: 'صافي التشغيل' },
       { key: 'meter_unit_snapshot', label: 'الوحدة' },
       { key: 'fuel_consumed', label: 'الوقود المستهلك' },
+      { key: 'water_total', label: 'إجمالي المياه (م³)' },
+      { key: 'tanker_label', label: 'الصهريج' },
+      { key: 'trips_count', label: 'عدد النقلات' },
+      { key: 'distributed_quantity', label: 'الكمية الموزعة (م³)' },
+      { key: 'network_quantity', label: 'كمية الشبكة (م³)' },
       { key: 'chlorine_consumed', label: 'الكلور المستهلك' },
       { key: 'residual_chlorine', label: 'الكلور المتبقي' },
       { key: 'status_label', label: 'الحالة' },
@@ -85,8 +90,10 @@ export function getAomsReportColumns(typeOrDynCols = 'operations', dynamicColumn
       { key: 'category_name', label: 'التصنيف' },
       { key: 'location', label: 'الموقع' },
       { key: 'status_label', label: 'الحالة' },
-      { key: 'fuel_type_name', label: 'نوع الوقود' },
+      { key: 'fuel_type_name', label: 'خزان الوقود (نوع الوقود)' },
       { key: 'effective_fuel_rate', label: 'معدل الوقود الفعال' },
+      { key: 'pump_capacity', label: 'قدرة المضخة (م³/ساعة)' },
+      { key: 'default_tanker_label', label: 'الصهريج الافتراضي' },
       { key: 'effective_chlorine', label: 'معدل الكلور الفعال' },
       { key: 'notes', label: 'الملاحظات' },
       ...dynCols,
@@ -111,6 +118,11 @@ export function formatUsageSummaryText(summaryOrMap = {}) {
   const parts = [`إجمالي السجلات: ${summary.count || 0}`];
   if (byUnit) parts.push(`صافي التشغيل حسب الوحدة: ${byUnit}`);
   if (summary.fuel_consumed_total) parts.push(`إجمالي الوقود المستهلك: ${summary.fuel_consumed_total}`);
+  if (summary.water_total) {
+    parts.push(
+      `إجمالي المياه: ${summary.water_total} م³ (صهاريج: ${summary.water_distributed_total || 0} م³ • شبكة: ${summary.water_network_total || 0} م³)`
+    );
+  }
   const chlUnits = Object.entries(summary.chlorine_consumed_by_unit || {});
   if (chlUnits.length > 1) {
     // different chlorine units are never added into one number (REPORT-007)
@@ -136,7 +148,7 @@ const triggerDownload = (blob, filename) => {
   return true;
 };
 
-export function exportAomsCSV(report, title = 'تقرير AOMS V2') {
+export function exportAomsCSV(report, title = 'تقرير إدارة وتشغيل الأصول والمعدات') {
   const cols = getAomsReportColumns(report.type, report.dynamicColumns);
   const escapeCsv = val => {
     let s = val === null || val === undefined || val === '' ? '—' : String(val);
@@ -163,7 +175,7 @@ export function exportAomsCSV(report, title = 'تقرير AOMS V2') {
 export async function exportAomsExcel(report, title = 'تقرير نظام إدارة وتشغيل الأصول والمعدات', filtersSummary = 'الكل') {
   const cols = getAomsReportColumns(report.type, report.dynamicColumns);
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'AOMS V2 — م. محمد أبو زهري';
+  wb.creator = 'إدارة وتشغيل الأصول والمعدات — م. محمد أبو زهري';
   wb.created = new Date();
 
   const ws = wb.addWorksheet('التقرير', {

@@ -438,3 +438,75 @@ export const getOperationDateRule = (
     defaultDate: blocked ? '' : min,
   };
 };
+
+// ---------------------------------------------------------------------------
+// Single fuel tank per asset + pump water / tanker distribution (migration 005)
+// ---------------------------------------------------------------------------
+export const ASSET_KINDS = Object.freeze({ general: 'عام', pump: 'مضخة', tanker: 'صهريج' });
+export const NO_FUEL_LABEL = 'بدون وقود';
+
+export const assetKind = category => (category?.asset_kind && ASSET_KINDS[category.asset_kind] ? category.asset_kind : 'general');
+
+/** The one tank of an asset: its fuel type id, or null when the asset is «بدون وقود». */
+export const getAssetTank = asset => asset?.fuel_type_id || null;
+
+/** Consumption = operating hours × fuel per hour recorded on the asset card (or category default). */
+export const calcTankConsumption = (hours, fuelPerHour) => {
+  const h = Number(hours || 0);
+  const r = Number(fuelPerHour || 0);
+  if (!(h > 0) || !(r > 0)) return 0;
+  return roundNum(h * r);
+};
+
+/** Pumped water (m³) = (end − start) × pump capacity (m³/hour). */
+export const calcPumpWater = (startReading, endReading, capacity) => {
+  const s = Number(startReading);
+  const e = Number(endReading);
+  const c = Number(capacity);
+  if (!Number.isFinite(s) || !Number.isFinite(e) || !(c > 0) || e < s) return 0;
+  return roundNum((e - s) * c);
+};
+
+/** Network quantity = total water − quantity distributed by tankers. */
+export const calcNetwork = (waterTotal, distributed) => roundNum(Number(waterTotal || 0) - Number(distributed || 0));
+
+/** Validation for the pump/tanker part of a log. Returns an array of Arabic messages. */
+export const validatePumpLog = ({ waterTotal = 0, tripsCount = 0, distributed = 0, tankerId = null } = {}) => {
+  const errors = [];
+  const t = Number(tripsCount || 0);
+  const d = Number(distributed || 0);
+  if (!Number.isInteger(t) || t < 0) errors.push('عدد النقلات يجب أن يكون عددًا صحيحًا موجبًا أو صفرًا');
+  if (!Number.isFinite(d) || d < 0) errors.push('الكمية الموزعة لا يمكن أن تكون سالبة');
+  if (d > roundNum(waterTotal) + 1e-9) errors.push(`الكمية الموزعة (${d}) لا يمكن أن تتجاوز إجمالي المياه (${roundNum(waterTotal)})`);
+  if ((t > 0 || d > 0) && !tankerId) errors.push('يجب اختيار الصهريج عند تسجيل نقلات أو كمية موزعة');
+  return errors;
+};
+
+/** Balance of the asset's single tank: refills ± adjustments − consumption (logs of this asset). */
+export const calculateTankBalance = (asset, fuelTransactions = [], operationLogs = []) => {
+  const tank = getAssetTank(asset);
+  if (!asset || !tank) return { tank: null, supplied: 0, adjustedPlus: 0, adjustedMinus: 0, consumed: 0, balance: 0 };
+  let supplied = 0; let adjustedPlus = 0; let adjustedMinus = 0; let consumed = 0;
+  for (const t of fuelTransactions) {
+    if (t.asset_id !== asset.id || t.fuel_type_id !== tank) continue;
+    const q = Number(t.quantity || 0);
+    if (t.transaction_type === 'supply' || t.transaction_type === 'purchase') supplied += q;
+    else if (t.transaction_type === 'adjustment_plus' || t.transaction_type === 'adjustment') adjustedPlus += q;
+    else if (t.transaction_type === 'adjustment_minus' || t.transaction_type === 'dispense') adjustedMinus += q;
+  }
+  for (const l of operationLogs) {
+    if (l.asset_id !== asset.id) continue;
+    if (l.fuel_type_id && l.fuel_type_id !== tank) continue;
+    consumed += Number(l.fuel_consumed || 0);
+  }
+  return {
+    tank,
+    supplied: roundNum(supplied),
+    adjustedPlus: roundNum(adjustedPlus),
+    adjustedMinus: roundNum(adjustedMinus),
+    consumed: roundNum(consumed),
+    balance: roundNum(supplied + adjustedPlus - adjustedMinus - consumed),
+  };
+};
+
+export const tankerLabel = tanker => (tanker ? `صهريج: ${tanker.name || tanker.asset_code || ''}` : '');

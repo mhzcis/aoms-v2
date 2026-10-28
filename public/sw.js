@@ -3,7 +3,7 @@
    - الأصول المبنية (assets/ ذات الأسماء المجزأة) والأيقونات: من الذاكرة المؤقتة أولًا.
    - النطاق: مجلد هذا الملف (./) فيعمل تحت /generator-operation-tracker/. */
 const VERSION = 'v2.0.0';
-const CACHE = `aoms-v2-${VERSION}`;
+const CACHE = `aoms-v2-fp1-${VERSION}`;
 const SCOPE = new URL('./', self.location).href;
 const INDEX = new URL('./index.html', SCOPE).href;
 const STATIC = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'].map(
