@@ -1,3 +1,8 @@
+import ReportExportDialog from '../components/ReportExportDialog';
+import DataResetPanel from '../components/DataResetPanel';
+import { reportExportError } from '../domain/reportExportModel';
+import { tankerDistributions } from '../domain/workflowSettings';
+import TextField from '../components/AppTextField';
 import Select from '../components/AccessibleSelect';
 import AuditDetails, { auditActor, auditChanges } from '../components/AuditDetails';
 import { businessDateTime, businessTimeZone, newestFirst } from '../utils/businessTime';
@@ -33,7 +38,6 @@ import {
   TableHead,
   TableRow,
   Tabs,
-  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -256,11 +260,7 @@ export default function EntityPage({ type }) {
     meter_unit: 'ساعة تشغيل',
     supports_fuel: true,
     supports_chlorine: false,
-    default_fuel_rate: '',
-    fuel_unit: 'لتر',
-    default_chlorine_consumption: '',
     chlorine_unit: 'كجم',
-    default_residual_chlorine: '',
   });
   const [fieldDialog, setFieldDialog] = useState(false);
   const [fieldForm, setFieldForm] = useState({
@@ -293,11 +293,11 @@ export default function EntityPage({ type }) {
     fuel_type_id: '',
     pump_capacity: '',
     default_tanker_id: '',
-    has_fuel_rate_override: false,
+    has_fuel_rate_override: true,
     fuel_rate_override: '',
-    has_chlorine_consumption_override: false,
+    has_chlorine_consumption_override: true,
     chlorine_consumption_override: '',
-    has_residual_chlorine_override: false,
+    has_residual_chlorine_override: true,
     residual_chlorine_override: '',
   });
   const [assetDynValues, setAssetDynValues] = useState({});
@@ -427,6 +427,7 @@ export default function EntityPage({ type }) {
     status: 'active',
   });
   const [backupPreview, setBackupPreview] = useState(null);
+  const [exportSnapshot, setExportSnapshot] = useState(null);
   const [backupDoc, setBackupDoc] = useState(null);
   const backupFileRef = useRef(null);
 
@@ -465,7 +466,7 @@ export default function EntityPage({ type }) {
         {conflictBanner}
         <PageTitle
           title="التصنيفات ومحرك الحقول الديناميكية"
-          subtitle="إدارة تصنيفات الأصول، وحدات العداد، معدلات الوقود والكلور، والحقول الديناميكية"
+          subtitle="إدارة تصنيفات الأصول ووحدات العداد والحقول؛ تضبط قيم الاستهلاك في بطاقة كل أصل"
           badge={<Chip size="small" color="primary" icon={<CategoryRounded />} label={`${categories.length} تصنيف`} />}
           action={
             isAdmin && (
@@ -511,11 +512,7 @@ export default function EntityPage({ type }) {
                       meter_unit: 'ساعة تشغيل',
                       supports_fuel: true,
                       supports_chlorine: false,
-                      default_fuel_rate: '',
-                      fuel_unit: 'لتر',
-                      default_chlorine_consumption: '',
                       chlorine_unit: 'كجم',
-                      default_residual_chlorine: '',
                     });
                     setCatDialog(true);
                   }}
@@ -574,9 +571,8 @@ export default function EntityPage({ type }) {
                               setCatForm({
                                 ...cat,
                                 asset_kind: cat.asset_kind || 'general',
-                                default_fuel_rate: cat.default_fuel_rate ?? '',
-                                default_chlorine_consumption: cat.default_chlorine_consumption ?? '',
-                                default_residual_chlorine: cat.default_residual_chlorine ?? '',
+
+
                               });
                               setCatDialog(true);
                             }}
@@ -607,7 +603,7 @@ export default function EntityPage({ type }) {
                           size="small"
                           color="primary"
                           variant="outlined"
-                          label={`وقود افتراضي: ${cat.default_fuel_rate ?? 0} ${cat.fuel_unit || 'لتر'}`}
+                          label="يدعم الوقود — الوحدة من نوع الوقود"
                         />
                       )}
                       {cat.supports_chlorine && (
@@ -615,7 +611,7 @@ export default function EntityPage({ type }) {
                           size="small"
                           color="secondary"
                           variant="outlined"
-                          label={`كلور افتراضي: ${cat.default_chlorine_consumption ?? 0} ${cat.chlorine_unit || 'كجم'}`}
+                          label={`يدعم الكلور (${cat.chlorine_unit || 'كجم'})`}
                         />
                       )}
                     </Stack>
@@ -772,23 +768,6 @@ export default function EntityPage({ type }) {
                 }
                 label="يدعم الوقود؟"
               />
-              {catForm.supports_fuel && (
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <TextField
-                    fullWidth
-                    type="number"
-                    label="معدل استهلاك الوقود الافتراضي"
-                    value={catForm.default_fuel_rate}
-                    onChange={e => setCatForm({ ...catForm, default_fuel_rate: e.target.value })}
-                  />
-                  <TextField
-                    fullWidth
-                    label="وحدة الوقود"
-                    value={catForm.fuel_unit || 'لتر'}
-                    onChange={e => setCatForm({ ...catForm, fuel_unit: e.target.value })}
-                  />
-                </Stack>
-              )}
               <FormControlLabel
                 control={
                   <Switch
@@ -798,28 +777,7 @@ export default function EntityPage({ type }) {
                 }
                 label="يدعم الكلور؟"
               />
-              {catForm.supports_chlorine && (
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <TextField
-                    fullWidth
-                    type="number"
-                    label="استهلاك الكلور الافتراضي"
-                    value={catForm.default_chlorine_consumption}
-                    onChange={e =>
-                      setCatForm({ ...catForm, default_chlorine_consumption: e.target.value })
-                    }
-                  />
-                  <TextField
-                    fullWidth
-                    type="number"
-                    label="نسبة الكلور العالقة الافتراضية"
-                    value={catForm.default_residual_chlorine}
-                    onChange={e =>
-                      setCatForm({ ...catForm, default_residual_chlorine: e.target.value })
-                    }
-                  />
-                </Stack>
-              )}
+
             </Stack>
           </DialogContent>
           <DialogActions>
@@ -993,6 +951,10 @@ export default function EntityPage({ type }) {
       .sort((a, b) => a.sort_order - b.sort_order);
     const formCat = categories.find(c => c.id === assetForm.category_id);
     const formIsPump = assetKind(formCat) === 'pump';
+    const ownDefaultError = [
+      ...(formCat?.supports_fuel && assetForm.fuel_type_id ? [assetForm.fuel_rate_override] : []),
+      ...(formCat?.supports_chlorine ? [assetForm.chlorine_consumption_override, assetForm.residual_chlorine_override] : []),
+    ].some(v=>v===''||v==null||!Number.isFinite(Number(v))||Number(v)<0) ? 'أدخل القيم الافتراضية للأصل؛ يمكن إدخال صفر' : '';
     const formTankLocked = Boolean(
       assetForm.id &&
         (fuelTransactions.some(t => t.asset_id === assetForm.id) ||
@@ -1011,7 +973,7 @@ export default function EntityPage({ type }) {
         {conflictBanner}
         <PageTitle
           title="الأصول والمعدات"
-          subtitle="الأصول مرتبة تصاعديًا حسب الكود مع دعم التجاوز والوراثة والأصل الافتراضي لكل تصنيف"
+          subtitle="الأصول مرتبة حسب الكود؛ لكل أصل قيمه الافتراضية ونوع الوقود ووحدته"
           badge={<Chip size="small" color="info" icon={<PrecisionManufacturingRounded />} label={`${filteredAssets.length} أصل`} />}
           action={
             isAdmin && (
@@ -1033,11 +995,11 @@ export default function EntityPage({ type }) {
                     fuel_type_id: '',
                     pump_capacity: '',
                     default_tanker_id: '',
-                    has_fuel_rate_override: false,
+                    has_fuel_rate_override: true,
                     fuel_rate_override: '',
-                    has_chlorine_consumption_override: false,
+                    has_chlorine_consumption_override: true,
                     chlorine_consumption_override: '',
-                    has_residual_chlorine_override: false,
+                    has_residual_chlorine_override: true,
                     residual_chlorine_override: '',
                   });
                   setAssetDynValues({});
@@ -1115,12 +1077,13 @@ export default function EntityPage({ type }) {
                               });
                             setAssetForm({
                               ...a,
+                              has_fuel_rate_override:true,has_chlorine_consumption_override:true,has_residual_chlorine_override:true,
                               fuel_type_id: a.fuel_type_id ?? '',
                               pump_capacity: a.pump_capacity ?? '',
                               default_tanker_id: a.default_tanker_id ?? '',
-                              fuel_rate_override: a.fuel_rate_override ?? '',
-                              chlorine_consumption_override: a.chlorine_consumption_override ?? '',
-                              residual_chlorine_override: a.residual_chlorine_override ?? '',
+                              fuel_rate_override: effectiveValue(a, categories.find(c=>c.id===a.category_id), 'fuel_rate') ?? 0,
+                              chlorine_consumption_override: effectiveValue(a, categories.find(c=>c.id===a.category_id), 'chlorine_consumption') ?? 0,
+                              residual_chlorine_override: effectiveValue(a, categories.find(c=>c.id===a.category_id), 'residual_chlorine') ?? 0,
                             });
                             setAssetDynValues(vals);
                             setAssetDialog(true);
@@ -1190,7 +1153,7 @@ export default function EntityPage({ type }) {
                       {cat?.supports_fuel && a.fuel_type_id && (
                         <Typography variant="body2">
                           استهلاك الوقود في الساعة: <b>{effFuel ?? 0}</b>{' '}
-                          {a.has_fuel_rate_override ? '(من بطاقة الأصل)' : '(موروث من التصنيف)'}
+                          {fuelTypes.find(f=>f.id===a.fuel_type_id)?.unit || 'لتر'}/ساعة (من بطاقة الأصل)
                         </Typography>
                       )}
                       {assetKind(cat) === 'pump' && (
@@ -1204,7 +1167,7 @@ export default function EntityPage({ type }) {
                       {cat?.supports_chlorine && (
                         <Typography variant="body2">
                           استهلاك الكلور الفعلي: <b>{effChl ?? 0}</b>{' '}
-                          {a.has_chlorine_consumption_override ? '(تجاوز خاص)' : '(موروث)'}
+                          {cat?.chlorine_unit || 'كجم'} (من بطاقة الأصل)
                         </Typography>
                       )}
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
@@ -1288,31 +1251,7 @@ export default function EntityPage({ type }) {
                   </FormHelperText>
                 </FormControl>
               )}
-              {formCat?.supports_fuel && assetForm.fuel_type_id && (
-                <>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={Boolean(assetForm.has_fuel_rate_override)}
-                        onChange={e =>
-                          setAssetForm({ ...assetForm, has_fuel_rate_override: e.target.checked })
-                        }
-                      />
-                    }
-                    label={`استهلاك وقود خاص بهذا الأصل (الافتراضي للتصنيف: ${formCat?.default_fuel_rate ?? 0} ${
-                      formCat?.fuel_unit || 'لتر'
-                    }/ساعة)`}
-                  />
-                  {assetForm.has_fuel_rate_override && (
-                    <TextField
-                      type="number"
-                      label={`استهلاك الوقود في الساعة (${formCat?.fuel_unit || 'لتر'}/ساعة)`}
-                      value={assetForm.fuel_rate_override}
-                      onChange={e => setAssetForm({ ...assetForm, fuel_rate_override: e.target.value })}
-                    />
-                  )}
-                </>
-              )}
+              {formCat?.supports_fuel && assetForm.fuel_type_id && <TextField required type="number" label={`استهلاك الوقود الافتراضي للأصل (${fuelTypes.find(f=>f.id===assetForm.fuel_type_id)?.unit || 'لتر'}/${formCat?.meter_unit || 'وحدة تشغيل'})`} value={assetForm.fuel_rate_override} inputProps={{min:0,step:'any'}} onChange={e=>setAssetForm({...assetForm,has_fuel_rate_override:true,fuel_rate_override:e.target.value})} helperText="قيمة خاصة بهذا الأصل؛ الوحدة مأخوذة من نوع الوقود المختار" />}
               {formIsPump && (
                 <>
                   <TextField
@@ -1344,30 +1283,11 @@ export default function EntityPage({ type }) {
                   </FormControl>
                 </>
               )}
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={Boolean(assetForm.has_chlorine_consumption_override)}
-                    onChange={e =>
-                      setAssetForm({
-                        ...assetForm,
-                        has_chlorine_consumption_override: e.target.checked,
-                      })
-                    }
-                  />
-                }
-                label="تجاوز قيمة استهلاك الكلور الافتراضية"
-              />
-              {assetForm.has_chlorine_consumption_override && (
-                <TextField
-                  type="number"
-                  label="قيمة تجاوز استهلاك الكلور"
-                  value={assetForm.chlorine_consumption_override}
-                  onChange={e =>
-                    setAssetForm({ ...assetForm, chlorine_consumption_override: e.target.value })
-                  }
-                />
-              )}
+              {formCat?.supports_chlorine && <>
+                <TextField required type="number" label={`استهلاك الكلور الافتراضي للأصل (${formCat.chlorine_unit || 'كجم'})`} value={assetForm.chlorine_consumption_override} inputProps={{min:0,step:'any'}} onChange={e=>setAssetForm({...assetForm,has_chlorine_consumption_override:true,chlorine_consumption_override:e.target.value})}/>
+                <TextField required type="number" label="الكلور المتبقي الافتراضي للأصل" value={assetForm.residual_chlorine_override} inputProps={{min:0,step:'any'}} onChange={e=>setAssetForm({...assetForm,has_residual_chlorine_override:true,residual_chlorine_override:e.target.value})}/>
+              </>}
+              {ownDefaultError && <Alert severity="info">{ownDefaultError}</Alert>}
               <TextField
                 multiline
                 minRows={2}
@@ -1390,7 +1310,7 @@ export default function EntityPage({ type }) {
             <Button onClick={() => setAssetDialog(false)}>إلغاء</Button>
             <Button
               variant="contained"
-              disabled={!canMutateAdmin || Boolean(assetFormError)}
+              disabled={!canMutateAdmin || Boolean(assetFormError) || Boolean(ownDefaultError)}
               onClick={async () => {
                 if (assetForm.id) {
                   await executeWithConflictGuard(
@@ -1566,6 +1486,7 @@ export default function EntityPage({ type }) {
       .filter(l => l.asset_id === selectedAssetId)
       .sort((a, b) => b.operation_date.localeCompare(a.operation_date));
     const logsPage = pageRows('operation_logs', assetLogs, selectedAssetId);
+    const deliveries = assetKind(activeCategory)==='tanker' ? tankerDistributions(operationLogs,assets,selectedAssetId) : [];
 
     const latestAssetLog = assetLogs[0] || null;
     const dateRule = getOperationDateRule(
@@ -1786,11 +1707,11 @@ export default function EntityPage({ type }) {
                     fullWidth
                     size="small"
                     disabled
-                    label={`استهلاك الوقود المحسوب (${activeCategory.fuel_unit || 'لتر'})`}
+                    label={`استهلاك الوقود المحسوب (${tankFuelType?.unit || 'لتر'})`}
                     value={computedFuel}
                     helperText={
                       hasTank
-                        ? `خزان: ${tankFuelType?.name || '—'} • ${effRate ?? 0} ${activeCategory.fuel_unit || 'لتر'}/ساعة`
+                        ? `خزان: ${tankFuelType?.name || '—'} • ${effRate ?? 0} ${tankFuelType?.unit || 'لتر'}/ساعة`
                         : `${NO_FUEL_LABEL} — لا يُحسب استهلاك`
                     }
                   />
@@ -2016,6 +1937,12 @@ export default function EntityPage({ type }) {
           </Paper>
         )}
 
+        {assetKind(activeCategory)==='tanker' && <Paper sx={{p:2,mb:3}}>
+          <Typography variant="h6">نقلات الشاحنة من سجلات المضخات</Typography>
+          <Typography>إجمالي النقلات: {deliveries.reduce((sum,l)=>sum+Number(l.trips_count||0),0)} — الكمية الموزعة: {deliveries.reduce((sum,l)=>sum+Number(l.distributed_quantity||0),0)} م³</Typography>
+          <Typography variant="body2" sx={{mb:1}}>هذه بيانات مرجعية من سجلات المضخات؛ لا تضاف إلى استهلاك الشاحنة أو إجمالي إنتاج المياه.</Typography>
+          {!deliveries.length ? <Alert severity="info">لا توجد نقلات مرتبطة بهذه الشاحنة</Alert> : <TableContainer><Table size="small"><TableHead><TableRow>{['التاريخ','المضخة المصدر','النقلات','الكمية الموزعة (م³)','السجل المصدر'].map(x=><TableCell key={x}>{x}</TableCell>)}</TableRow></TableHead><TableBody>{deliveries.map(l=><TableRow key={l.id}><TableCell>{l.operation_date}</TableCell><TableCell>{l.pump?.asset_code} | {l.pump?.name}</TableCell><TableCell>{l.trips_count??0}</TableCell><TableCell>{l.distributed_quantity??0}</TableCell><TableCell><Button onClick={()=>{setSelectedCatId(l.pump?.category_id||'');setSelectedAssetId(l.asset_id);}}>عرض سجل المضخة</Button></TableCell></TableRow>)}</TableBody></Table></TableContainer>}
+        </Paper>}
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -2025,7 +1952,7 @@ export default function EntityPage({ type }) {
                 {activeCategory?.uses_meter && <TableCell>السابقة</TableCell>}
                 {activeCategory?.uses_meter && <TableCell>الحالية</TableCell>}
                 {activeCategory?.uses_meter && <TableCell>الفرق ({activeCategory.meter_unit})</TableCell>}
-                {activeCategory?.supports_fuel && <TableCell>الوقود ({tankFuelType?.unit || activeCategory?.fuel_unit || 'لتر'})</TableCell>}
+                {activeCategory?.supports_fuel && <TableCell>الوقود ({tankFuelType?.unit || 'لتر'})</TableCell>}
                 {isPump && <TableCell>المياه (م³)</TableCell>}
                 {isPump && <TableCell>الصهريج</TableCell>}
                 {isPump && <TableCell>النقلات</TableCell>}
@@ -2655,6 +2582,10 @@ export default function EntityPage({ type }) {
       assetIds: repFilters.scope === 'multi_assets' ? repFilters.assetIds : [],
     };
     const reportResult = service.buildReport(data, scopedFilters);
+    reportResult.exportError = reportExportError(data, reportResult.type);
+    reportResult.sourceAt = data.__snapshot?.at || null;
+    reportResult.cached = Boolean(data.__snapshot?.cached);
+    const openExport = format => setExportSnapshot({format,report:structuredClone(reportResult),at:new Date().toISOString(),title:'تقرير إدارة وتشغيل الأصول والمعدات'});
     const cols = getAomsReportColumns(reportResult.type, reportResult.dynamicColumns);
     const reportPage = pageRows('reports', reportResult.rows, JSON.stringify(scopedFilters));
     // identical summary text to the one written into the CSV/Excel/PDF files (REPORT-007/008)
@@ -2668,21 +2599,21 @@ export default function EntityPage({ type }) {
           badge={<Chip size="small" color="primary" icon={<AssessmentRounded />} label={`${reportResult.rows.length} صف`} />}
           action={
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Button variant="outlined" disabled={!reportResult.valid} onClick={() => exportAomsCSV(reportResult)}>
+              <Button variant="outlined" disabled={!reportResult.valid || Boolean(reportResult.exportError)} onClick={() => exportAomsCSV(reportResult)}>
                 تصدير CSV
               </Button>
               <Button
                 variant="outlined"
                 color="secondary"
                 startIcon={<PictureAsPdfRounded />}
-                disabled={!reportResult.valid} onClick={() => exportAomsPDF(reportResult, `النطاق: ${REPORT_SCOPE_LABELS[repFilters.scope] || repFilters.scope}`, reportResult.filtersSummary).catch(e => setNotice({ type: 'error', text: e.message }))}
+                disabled={!reportResult.valid || Boolean(reportResult.exportError)} onClick={() => openExport('pdf')}
               >
                 طباعة / PDF
               </Button>
               <Button
                 variant="contained"
                 startIcon={<FileDownloadRounded />}
-                disabled={!reportResult.valid} onClick={() => exportAomsExcel(reportResult, `النطاق: ${REPORT_SCOPE_LABELS[repFilters.scope] || repFilters.scope}`, reportResult.filtersSummary).catch(e => setNotice({ type: 'error', text: e.message }))}
+                disabled={!reportResult.valid || Boolean(reportResult.exportError)} onClick={() => openExport('excel')}
               >
                 تصدير Excel
               </Button>
@@ -2690,6 +2621,8 @@ export default function EntityPage({ type }) {
           }
         />
 
+        {exportSnapshot && <ReportExportDialog key={exportSnapshot.at} snapshot={exportSnapshot} currentSourceAt={data.__snapshot?.at} onRefresh={()=>setExportSnapshot(old=>({...old,report:structuredClone(reportResult),at:new Date().toISOString()}))} onClose={()=>setExportSnapshot(null)} />}
+        {reportResult.exportError && <Alert severity="error" sx={{mb:2}}>{reportResult.exportError}</Alert>}
         <Paper sx={{ p: 2.5, mb: 3 }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, sm: 4 }}>
@@ -3073,7 +3006,7 @@ export default function EntityPage({ type }) {
                 fullWidth
                 size="small"
                 label="الوحدة (مثل: لتر)"
-                value={ftForm.unit}
+                value={ftForm.unit} disabled={Boolean(ftForm.id && (assets.some(a=>a.fuel_type_id===ftForm.id) || fuelTransactions.some(t=>t.fuel_type_id===ftForm.id)))}
                 onChange={e => setFtForm({ ...ftForm, unit: e.target.value })}
               />
               <FormControl size="small" sx={{ minWidth: 140 }}>
@@ -3163,6 +3096,12 @@ export default function EntityPage({ type }) {
           subtitle="إدارة حسابات المستخدمين وتوزيع الأدوار (مدير النظام، مشغل ميداني، مراقب)"
           badge={<Chip size="small" color="primary" icon={<ManageAccountsRounded />} label={`${profiles.length} مستخدم`} />}
         />
+        <Paper sx={{p:2.5,mb:3}}><Typography variant="h6">صلاحيات الأدوار</Typography>
+          <Typography sx={{my:1}}><b>مدير النظام (Administrator):</b> إدارة التصنيفات والحقول والأصول والمشغلين وأنواع الوقود والمستخدمين والإعدادات، وجميع أعمال التشغيل والتقارير والتدقيق والنسخ والاستعادة والمسح الشامل. تخضع عمليات تعديل وحذف السجلات لقيود آخر سجل والأرصدة.</Typography>
+          <Typography sx={{my:1}}><b>المشغل (Operator):</b> عرض البيانات والتقارير وتصديرها، وإضافة سجلات التشغيل والوقود والكلور وتعديل أو حذف آخر سجل مسموح وفق قواعد النظام. لا يدير البيانات المرجعية أو المستخدمين أو النسخ والاستعادة والمسح.</Typography>
+          <Typography sx={{my:1}}><b>المراقب (Viewer):</b> القراءة والبحث وعرض التقارير وتصديرها فقط؛ دون إضافة أو تعديل أو حذف. سجل التدقيق الإداري والنسخ والاستعادة والمسح للمدير.</Typography>
+          <Typography variant="body2">الحساب غير النشط لا يملك وصولًا تشغيليًا، وجميع عمليات الكتابة معطلة أثناء انقطاع الاتصال.</Typography>
+        </Paper>
         <Paper sx={{ p: 2.5, mb: 3 }}>
           <Typography variant="h6" mb={2} fontWeight={800}>
             {userForm.id ? 'تعديل صلاحيات وحالة المستخدم' : 'إضافة / دعوة مستخدم'}
@@ -3343,6 +3282,7 @@ export default function EntityPage({ type }) {
           </Stack>
         </Paper>
 
+        <DataResetPanel service={service} disabled={!canMutateAdmin} runAction={executeWithConflictGuard} labels={BACKUP_ENTITY_LABELS} onBackup={async()=>{const doc=await service.backup();downloadJsonFile(doc,`aoms-pre-reset-safety-${stamp()}.json`);}} />
         {backupPreview && (
           <Card>
             <Box sx={{ height: 5, bgcolor: backupPreview.valid ? 'success.main' : 'error.main' }} />

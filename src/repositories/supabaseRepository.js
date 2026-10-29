@@ -84,7 +84,6 @@ export class SupabaseRepository extends AomsRepository {
       }
       const { data, error } = await q.range(from, from + pageSize - 1);
       if (error) {
-        if (table === 'audit_logs') return [];
         throw error;
       }
       rows.push(...(data || []));
@@ -99,17 +98,21 @@ export class SupabaseRepository extends AomsRepository {
   }
 
   async snapshot() {
+    const failedTables=[];
     const entries = await Promise.all(
       AOMS_TABLES.map(async t => {
         try {
           const rows = await this.list(t);
           return [t, rows];
         } catch {
+          failedTables.push(t);
           return [t, this.cached(t)];
         }
       })
     );
-    return Object.fromEntries(entries);
+    const result=Object.fromEntries(entries);
+    result.__snapshot={at:new Date().toISOString(),failedTables};
+    return result;
   }
 
   async create(table, payload) {

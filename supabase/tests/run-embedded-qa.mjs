@@ -31,7 +31,7 @@ try {
     }
     await db.exec(sql);
   }
-  await check('all six migrations apply and preserve the pre-existing invalid phone', async () => {
+  await check('all migrations apply and preserve the pre-existing invalid phone', async () => {
     assert.equal((await one("select count(*)::int n from public.operators where phone='NOT-A-PHONE'")).n, 1);
   });
   for (const [role, id] of Object.entries(U)) {
@@ -111,5 +111,40 @@ try {
     assert.equal((await one('select count(*)::int n from public.operators')).n, countBefore);
     assert.equal((await one('select count(*)::int n from public.operation_logs')).n, 1);
   });
+  await as('admin');
+  await check('asset rates are materialized and independent of category changes',async()=>{
+    const a=await one('select * from public.assets where id=$1',[asset.id]);
+    assert.equal(a.has_fuel_rate_override,true);assert.equal(Number(a.fuel_rate_override),20);
+    await db.query('update public.categories set default_fuel_rate=99 where id=$1',[cat.id]);
+    assert.equal(Number((await one('select fuel_rate_override from public.assets where id=$1',[asset.id])).fuel_rate_override),20);
+  });
+  await check('linked fuel unit cannot be changed by a direct table write',async()=>reject(()=>db.query("update public.fuel_types set unit='جالون' where id=$1",[fuel.id])));
+  for(const role of ['operator','viewer','inactive','anon']) await check(`${role} cannot preview or invoke full reset`,async()=>{
+    await as(role);await reject(()=>rpc('aoms_reset_preview'));await reject(()=>rpc('reset_aoms_data','مسح شامل','irrelevant'));
+  });
+  await as('admin');
+  let reset=await rpc('aoms_reset_preview');
+  await check('incorrect reset phrase leaves assets intact',async()=>{await reject(()=>rpc('reset_aoms_data','wrong',reset.fingerprint));assert.equal((await one('select count(*)::int n from public.assets')).n,1);});
+  await check('stale reset fingerprint leaves newly changed data intact',async()=>{
+    await one("insert into public.operators(name) values('QA changed after preview') returning *");
+    await reject(()=>rpc('reset_aoms_data','مسح شامل',reset.fingerprint));assert.equal((await one('select count(*)::int n from public.assets')).n,1);
+  });
+  await check('reset is atomic if a later delete fails',async()=>{
+    await db.exec('reset role');
+    await db.exec("create function public.qa_reject_reset() returns trigger language plpgsql as $$begin raise exception 'QA forced error'; end$$; create trigger qa_reject_reset before delete on public.fuel_types for each row execute function public.qa_reject_reset();");
+    await as('admin');reset=await rpc('aoms_reset_preview');await reject(()=>rpc('reset_aoms_data','مسح شامل',reset.fingerprint));
+    assert.equal((await one('select count(*)::int n from public.assets')).n,1);assert.equal((await one('select count(*)::int n from public.operation_logs')).n,1);
+    await db.exec('reset role');await db.exec('drop trigger qa_reject_reset on public.fuel_types; drop function public.qa_reject_reset()');await as('admin');
+  });
+  await check('successful reset clears business data and preserves accounts/settings/audit',async()=>{
+    const profiles=(await one('select count(*)::int n from public.profiles')).n;
+    const settings=(await one('select count(*)::int n from public.app_settings')).n;
+    const audits=(await one('select count(*)::int n from public.audit_logs')).n;
+    reset=await rpc('aoms_reset_preview');await rpc('reset_aoms_data','مسح شامل',reset.fingerprint);
+    assert.equal((await one('select count(*)::int n from public.assets')).n,0);assert.equal((await one('select count(*)::int n from public.operation_logs')).n,0);
+    assert.equal((await one('select count(*)::int n from public.profiles')).n,profiles);assert.equal((await one('select count(*)::int n from public.app_settings')).n,settings);
+    assert.equal((await one('select count(*)::int n from public.audit_logs')).n,audits+1);assert.equal((await one("select count(*)::int n from public.timeline_events where event_type='application_reset'")).n,1);
+  });
+  await check('pre-reset backup restores after a complete reset',async()=>{await rpc('restore_aoms_backup',backup);assert.equal((await one('select count(*)::int n from public.assets')).n,1);assert.equal((await one('select count(*)::int n from public.operation_logs')).n,1);});
   console.log(JSON.stringify({ engine: 'PostgreSQL 17 WASM / PGlite', passed, production_data_used: false, auth: 'local Supabase SQL stub', concurrency: 'not tested by this suite' }));
 } finally { await db.close(); }

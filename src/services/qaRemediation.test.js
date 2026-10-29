@@ -67,8 +67,8 @@ describe('approved QA regression: reports F01/F05/F06/F10/F11', () => {
     exportAomsCSV(r); expect(await blobs[0].text()).toContain(r.filtersSummary);
     await exportAomsExcel(r);
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await blobs[1].arrayBuffer());
-    const ws = wb.worksheets[0]; expect(ws.getCell(2, 1).value).toContain(r.filtersSummary);
-    expect(ws.getCell(2, 1).value).toContain('Asia/Jerusalem'); expect(ws.rowCount).toBe(6);
+    const ws = wb.getWorksheet('الملخص'); expect(ws.getCell(2, 2).value).toContain(r.filtersSummary);
+    expect(ws.getCell(4, 2).value).toContain('Asia/Jerusalem'); expect(wb.getWorksheet('التفاصيل').rowCount).toBe(r.rows.length+1);
   });
   it('mixed fuel units are labelled individually in the summary rather than added as one unit', () => {
     const copy = structuredClone(state); copy.fuel_types.push({ id: 'g', name: 'وقود آخر', unit: 'جالون' });

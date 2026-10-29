@@ -8,7 +8,7 @@ const out = process.env.QA_OUT || '/tmp/aoms-approved-qa';
 fs.mkdirSync(out, { recursive: true });
 const server = process.env.QA_URL ? null : await createServer({ server: { host: '127.0.0.1', port: 5173, strictPort: true }, logLevel: 'error' });
 if (server) await server.listen();
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true,...(process.env.QA_CHROMIUM_PATH?{executablePath:process.env.QA_CHROMIUM_PATH}:{}) });
 let passed = 0;
 const failures = [];
 async function check(name, fn) {
@@ -55,12 +55,45 @@ try {
     for (const [label, file] of [['تصدير CSV', 'report.csv'], ['تصدير Excel', 'report.xlsx'], ['طباعة / PDF', 'report.pdf']]) {
       const promise = page.waitForEvent('download', { timeout: 30000 });
       await page.getByRole('button', { name: label, exact: true }).click();
+      if(!file.endsWith('csv')) await page.getByRole('dialog').getByRole('button',{name:file.endsWith('xlsx')?'إنشاء Excel':'إنشاء PDF',exact:true}).click();
       const download = await promise; await download.saveAs(`${out}/${file}`);
       const bytes = fs.readFileSync(`${out}/${file}`); assert.ok(bytes.length > 100);
       if (file.endsWith('pdf')) assert.equal(bytes.subarray(0, 4).toString(), '%PDF');
       if (file.endsWith('csv')) assert.ok(bytes.toString().includes('Asia/Jerusalem'));
     }
     assert.deepEqual(errors, []); await context.close();
+  });
+  await check('export dialog: mobile column selection, no-columns guard and oldest toggle',async()=>{
+    const {page,context,errors}=await fixture({pageName:'/reports',width:390});
+    await page.getByRole('button',{name:'تصدير Excel',exact:true}).click();const d=page.getByRole('dialog');
+    await d.getByRole('button',{name:'إلغاء الكل',exact:true}).click();assert.equal(await d.getByRole('button',{name:'إنشاء Excel',exact:true}).isDisabled(),true);
+    await d.getByRole('checkbox',{name:'رمز الأصل',exact:true}).check();await d.getByRole('switch').uncheck();
+    await d.getByText('معاينة أول 3 سجلات — الأقدم أولًا',{exact:true}).waitFor();
+    const w=await page.evaluate(()=>({client:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth}));assert.ok(w.scroll<=w.client+1);
+    const dl=page.waitForEvent('download');await d.getByRole('button',{name:'إنشاء Excel',exact:true}).click();await (await dl).saveAs(`${out}/selected.xlsx`);assert.deepEqual(errors,[]);await context.close();
+  });
+  await check('category has no fuel unit/default rate controls; assets have their own defaults',async()=>{
+    const {page,context}=await fixture({pageName:'/categories'});await page.getByRole('button',{name:'إضافة تصنيف',exact:true}).click();const d=page.getByRole('dialog');
+    assert.equal(await d.getByLabel(/وحدة الوقود|الاستهلاك الافتراضي|الاستهلاك الافتراضي للكلور|الكلور المتبقي الافتراضي/).count(),0);
+    await d.getByRole('button',{name:'إلغاء',exact:true}).click();await page.getByRole('link').filter({hasText:'الأصول والمعدات'}).click();
+    await page.getByRole('button',{name:'إضافة أصل جديد',exact:true}).click();assert.ok(await page.getByLabel(/استهلاك الكلور الافتراضي للأصل/).count());await context.close();
+  });
+  await check('truck logs show pump distribution and source link without duplicate events',async()=>{
+    const {page,context,errors}=await fixture({pageName:'/operation_logs'});await page.getByRole('combobox',{name:'1. اختر التصنيف',exact:true}).click();await page.getByRole('option',{name:'QAT | شاحنات QA',exact:true}).click();
+    await page.getByRole('heading',{name:'نقلات الشاحنة من سجلات المضخات',exact:true}).waitFor();assert.ok((await page.getByRole('main').innerText()).includes('إجمالي النقلات: 2 — الكمية الموزعة: 6 م³'));
+    await page.getByRole('button',{name:'عرض سجل المضخة',exact:true}).click();await page.getByLabel('القراءة السابقة (ساعة تشغيل)',{exact:true}).waitFor();
+    assert.ok(await page.locator('.locked-field').count());assert.deepEqual(errors,[]);await context.close();
+  });
+  await check('user page explains all three roles and disabled account behavior',async()=>{
+    const {page,context}=await fixture({pageName:'/users'});const t=await page.getByRole('main').innerText();for(const text of ['Administrator','Operator','Viewer','غير النشط'])assert.ok(t.includes(text),text);await context.close();
+  });
+  await check('full reset requires downloaded backup, acknowledgement and exact phrase; isolated reset succeeds',async()=>{
+    const {page,context,errors}=await fixture({pageName:'/backup'});await page.getByRole('button',{name:'معاينة المسح الشامل',exact:true}).click();const d=page.getByRole('dialog');const run=d.getByRole('button',{name:'تنفيذ المسح الشامل',exact:true});assert.equal(await run.isDisabled(),true);
+    await d.getByLabel('اكتب مسح شامل للتأكيد',{exact:true}).fill('مسح شامل');assert.equal(await run.isDisabled(),true);
+    const dl=page.waitForEvent('download');await d.getByRole('button',{name:'تنزيل نسخة أمان قبل المسح',exact:true}).click();await (await dl).saveAs(`${out}/pre-reset.json`);
+    await d.getByRole('checkbox').check();await run.click();await d.waitFor({state:'hidden'});
+    await page.getByRole('button',{name:'معاينة المسح الشامل',exact:true}).click();assert.ok((await page.getByRole('dialog').innerText()).includes('الأصول: 0'));
+    assert.deepEqual(errors,[]);await context.close();
   });
   await check('dynamic scope has one operation option', async () => {
     const { page, context } = await fixture({ pageName: '/categories' });

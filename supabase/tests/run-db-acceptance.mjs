@@ -282,11 +282,11 @@ async function main() {
   const ovr = await mkAsset(gen.id, { name: 'تجاوز', has_fuel_rate_override: true, fuel_rate_override: 5 });
   await saveFuel(operator, { asset_id: inh.id, fuel_type_id: ft1.id, transaction_date: day(9), transaction_type: 'supply', quantity: 1000 });
   await saveFuel(operator, { asset_id: ovr.id, fuel_type_id: ft1.id, transaction_date: day(9), transaction_type: 'supply', quantity: 1000 });
-  await check('ASSET-012', 'inheriting asset uses the CURRENT category rate (after the category changes)', async () => {
+  await check('ASSET-012', 'asset owns its captured rate after category defaults are retired', async () => {
     await admin.query(`update public.categories set default_fuel_rate=3 where id=$1`, [gen.id]);
     const l = await saveLog(operator, { asset_id: inh.id, operation_date: day(8), previous_reading: 0, current_reading: 10, fuel_type_id: ft1.id });
-    assert(Number(l.effective_fuel_rate) === 3 && Number(l.fuel_consumed) === 30, `rate=${l.effective_fuel_rate} fuel=${l.fuel_consumed}`);
-    return 'rate 3 → 30 L';
+    assert(Number(l.effective_fuel_rate) === 2 && Number(l.fuel_consumed) === 20, `rate=${l.effective_fuel_rate} fuel=${l.fuel_consumed}`);
+    return 'captured asset rate 2 → 20 L';
   });
   await check('ASSET-013', 'asset override is kept after the category value changes', async () => {
     const l = await saveLog(operator, { asset_id: ovr.id, operation_date: day(8), previous_reading: 0, current_reading: 10, fuel_type_id: ft1.id });
@@ -299,12 +299,12 @@ async function main() {
     assert(Number(l.r) === 5 && Number(c.r) === 3, `log ${l.r} cat ${c.r}`);
     return 'override 5 used, category 3 ignored';
   });
-  await check('ASSET-014', 'removing the override returns the asset to inheritance', async () => {
+  await check('ASSET-014', 'legacy override flag cannot reintroduce category inheritance', async () => {
     const u = (await rpc(admin, 'update_asset', [ovr.id, (await getAsset(ovr.id)).version, JSON.stringify({ has_fuel_rate_override: false }), '{}'])).r;
-    assert(u.has_fuel_rate_override === false && u.fuel_rate_override === null, JSON.stringify(u));
+    assert(u.has_fuel_rate_override === true && Number(u.fuel_rate_override) === 5, JSON.stringify(u));
     const l = await saveLog(operator, { asset_id: ovr.id, operation_date: day(7), current_reading: 20, fuel_type_id: ft1.id });
-    assert(Number(l.effective_fuel_rate) === 3 && Number(l.fuel_consumed) === 30, `rate=${l.effective_fuel_rate}`);
-    return 'override cleared; next log uses category rate 3';
+    assert(Number(l.effective_fuel_rate) === 5 && Number(l.fuel_consumed) === 50, `rate=${l.effective_fuel_rate}`);
+    return 'asset retains its own rate 5; no category inheritance';
   });
 
   // ---------------- operators ----------------
@@ -354,12 +354,12 @@ async function main() {
     return 'non-eligible: chlorine forced to 0 / residual NULL';
   });
   await check('OPLOG-020', 'editing the last log recalculates the fuel balance', async () => {
-    const before = await fuelBal(inh.id, ft1.id); // 1000 - 30
+    const before = await fuelBal(inh.id, ft1.id); // 1000 - (10 × captured asset rate 2)
     const l = await one(su, `select * from public.operation_logs where asset_id=$1 order by operation_date desc limit 1`, [inh.id]);
     await saveLog(operator, { id: l.id, version: l.version, operation_date: l.operation_date, previous_reading: 0, current_reading: 20, fuel_type_id: ft1.id });
     const after = await fuelBal(inh.id, ft1.id);
-    assert(before === 970 && after === 940, `before ${before} after ${after}`);
-    return 'balance 970 → 940 after usage 10→20 (rate 3)';
+    assert(before === 980 && after === 960, `before ${before} after ${after}`);
+    return 'balance 980 → 960 after usage 10→20 (asset rate 2)';
   });
   await check('OPLOG-021', 'create/edit/delete of a log write timeline + audit entries', async () => {
     const l = await one(su, `select * from public.operation_logs where asset_id=$1 order by operation_date desc limit 1`, [inh.id]);

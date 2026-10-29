@@ -1,3 +1,4 @@
+import { assetDefaults, resetPreview, RESET_TABLES, RESET_CONFIRMATION } from './workflowSettings.js';
 import { reportFilterError, describeReportFilters } from './reportFilters.js';
 import { businessTimeZone } from '../utils/businessTime.js';
 import { normalizePhone, operatorErrors } from '../utils/operatorValidation.js';
@@ -534,6 +535,7 @@ export class AomsEngine {
     const catIdx = this.state.categories.findIndex(c => c.id === payload.category_id);
     if (catIdx === -1) throw new Error('التصنيف غير موجود');
     const cat = this.state.categories[catIdx];
+    payload = assetDefaults(payload, cat);
     if (cat.status !== 'active') {
       throw new Error('لا يمكن إضافة أصل تحت تصنيف غير نشط');
     }
@@ -638,6 +640,7 @@ export class AomsEngine {
     }
 
     const prevCat = this.state.categories.find(c => c.id === prev.category_id);
+    payload = assetDefaults(payload, prevCat, prev);
     const tankFields = this.resolveTankAndPump(prevCat, payload, prev);
     const nextStatus = payload.status || prev.status;
     let nextDefault = payload.is_default !== undefined ? Boolean(payload.is_default) : prev.is_default;
@@ -801,6 +804,7 @@ export class AomsEngine {
       const idx = this.state.fuel_types.findIndex(f => f.id === payload.id);
       const prev = this.state.fuel_types[idx];
       this.checkVersion(prev, payload.version);
+      if (payload.unit && payload.unit !== prev.unit && (this.state.assets.some(a=>a.fuel_type_id===prev.id) || this.state.fuel_transactions.some(t=>t.fuel_type_id===prev.id))) throw new Error('وحدة نوع الوقود مقفلة بعد ربطه بأصل أو تسجيل حركات؛ أنشئ نوع وقود آخر للوحدة الجديدة');
       const updated = {
         ...prev,
         name,
@@ -1019,7 +1023,7 @@ export class AomsEngine {
         meter_unit_snapshot: category.uses_meter ? category.meter_unit : null,
         fuel_consumed: fuelConsumed,
         fuel_type_id: tankId,
-        fuel_unit_snapshot: category.supports_fuel ? category.fuel_unit || 'لتر' : null,
+        fuel_unit_snapshot: category.supports_fuel ? this.state.fuel_types.find(f=>f.id===asset.fuel_type_id)?.unit || 'لتر' : null,
         chlorine_consumed: chlorineConsumed,
         chlorine_unit_snapshot: category.supports_chlorine ? category.chlorine_unit || 'كجم' : null,
         residual_chlorine: residualChlorine,
@@ -1063,7 +1067,7 @@ export class AomsEngine {
       meter_unit_snapshot: category.uses_meter ? category.meter_unit : null,
       fuel_consumed: fuelConsumed,
       fuel_type_id: tankId,
-      fuel_unit_snapshot: category.supports_fuel ? category.fuel_unit || 'لتر' : null,
+      fuel_unit_snapshot: category.supports_fuel ? this.state.fuel_types.find(f=>f.id===asset.fuel_type_id)?.unit || 'لتر' : null,
       chlorine_consumed: chlorineConsumed,
       chlorine_unit_snapshot: category.supports_chlorine ? category.chlorine_unit || 'كجم' : null,
       residual_chlorine: residualChlorine,
@@ -1516,6 +1520,15 @@ export class AomsEngine {
     return clone(updated);
   }
 
+  async previewReset() { this.assertCanAdmin(); return resetPreview(this.state); }
+  async resetData(confirmation,fingerprint) {
+    this.assertCanAdmin();
+    if(confirmation!==RESET_CONFIRMATION)throw new Error('عبارة تأكيد المسح غير صحيحة');
+    const preview=await this.previewReset();if(preview.fingerprint!==fingerprint)throw new Error('تغيرت البيانات بعد المعاينة؛ أعد المعاينة وتنزيل نسخة أمان جديدة');
+    for(const table of RESET_TABLES)this.state[table]=[];
+    this.state.operation_log_field_values=[];
+    this.recordAudit('reset_application','system',null,null,preview.counts,'مسح شامل لبيانات التطبيق');this.notify();return preview.counts;
+  }
   async exportBackup() {
     this.assertCanAdmin();
     return {

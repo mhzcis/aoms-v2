@@ -1,5 +1,6 @@
 // Regression tests for defects fixed during the Oct-2026 zero-trust audit.
 import fs from 'node:fs';
+import { inflateSync } from 'node:zlib';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AomsService } from './aomsService';
@@ -65,7 +66,8 @@ describe('Amiri PDF fonts (were referenced but missing → build failure)', () =
     const { jsPDF } = await import('jspdf');
     const cell = 'المحطة'; // single word → one line even in a narrow column
     const report = { type: 'operations', rows: [{ asset_name: cell, notes: cell }], summary: {} };
-    const out = (await exportAomsPDF(report, 'تقرير (اختبار)', 'الكل', fonts)).output();
+    const raw = (await exportAomsPDF(report, 'تقرير (اختبار)', 'الكل', fonts)).output();
+    const out=[...raw.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)].map(m=>{try{return inflateSync(Buffer.from(m[1],'latin1')).toString('latin1');}catch{return m[1];}}).join('\n');
     // Reference glyph run for the same string drawn with explicit logical-RTL options vs. autotable's default options.
     const glyphs = opts => {
       const ref = new jsPDF({ orientation: 'l', unit: 'pt', format: 'a4' });

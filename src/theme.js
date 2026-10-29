@@ -91,6 +91,7 @@ export const makeTheme = mode => {
       },
     },
     components: {
+      MuiCssBaseline: { styleOverrides: { ':root': { '--locked-input-color': isDark ? '#cbd5e1' : '#475569' } } },
       MuiButton: {
         styleOverrides: {
           root: {
