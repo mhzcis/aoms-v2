@@ -16,6 +16,7 @@ export function AomsProvider({ children, customRepo = null, initialProfile = nul
   const [profile, setProfile] = useState(initialProfile);
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(!!repo && !initialProfile);
+  const [dataReady, setDataReady] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState(null);
   const [online, setOnline] = useState(() =>
@@ -31,11 +32,13 @@ export function AomsProvider({ children, customRepo = null, initialProfile = nul
     try {
       const next = await service.load();
       setData(next);
+      setDataReady(true);
       setError('');
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
+      setDataReady(true);
     }
   }, [service, userId, initialProfile]);
   const refreshRef = useRef(refresh);
@@ -108,8 +111,8 @@ export function AomsProvider({ children, customRepo = null, initialProfile = nul
       if (successMsg) setNotice({ type: 'success', text: successMsg });
       return res;
     } catch (e) {
-      // shown once as a notice (a persistent page-level error alert as well stacked two messages)
-      setNotice({ type: 'error', text: e.message });
+      // One persistent, dismissible notice, visible above dialogs as well as pages.
+      setNotice({ type: 'error', text: e?.message || 'تعذّر إتمام العملية؛ تحقق من المدخلات والاتصال ثم حاول مجددًا' });
       // re-thrown so callers can keep their dialog open; marked as already shown to the user
       if (e && typeof e === 'object') e.aomsReported = true;
       throw e;
@@ -134,7 +137,8 @@ export function AomsProvider({ children, customRepo = null, initialProfile = nul
     session,
     profile,
     data,
-    loading,
+    loading: loading || (!!session && !dataReady),
+    dataReady,
     error,
     setError,
     notice,

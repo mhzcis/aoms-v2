@@ -1,3 +1,5 @@
+import { assertOperation, assertTransaction } from '../utils/saveValidation';
+import { normalizePhone, operatorErrors } from '../utils/operatorValidation';
 import {
   normalizePrefix,
   validateCategoryInput,
@@ -93,6 +95,7 @@ export class AomsService {
   }
 
   async saveCategoryField(fieldInput, optionsInput = [], existingFields = []) {
+    fieldInput = { ...fieldInput, scope: fieldInput.scope === 'operation_log' ? 'operation' : fieldInput.scope };
     this.assertOnline();
     if (typeof this.repo.saveCategoryField === 'function') {
       return this.repo.saveCategoryField(fieldInput, optionsInput);
@@ -172,6 +175,9 @@ export class AomsService {
   }
 
   async saveOperator(payload) {
+    const errors = operatorErrors(payload);
+    if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
+    payload = { ...payload, phone: normalizePhone(payload.phone) };
     this.assertOnline();
     if (typeof this.repo.saveOperator === 'function') {
       return this.repo.saveOperator(payload);
@@ -206,6 +212,7 @@ export class AomsService {
 
   saveOperation(payload, values = {}) {
     this.assertOnline();
+    assertOperation(payload);
     if (typeof this.repo.saveOperationLog === 'function') {
       return this.repo.saveOperationLog(payload, values);
     }
@@ -222,6 +229,7 @@ export class AomsService {
 
   saveFuel(payload) {
     this.assertOnline();
+    assertTransaction(payload);
     if (typeof this.repo.saveFuelTransaction === 'function') {
       return this.repo.saveFuelTransaction(payload);
     }
@@ -238,6 +246,7 @@ export class AomsService {
 
   saveChlorine(payload) {
     this.assertOnline();
+    assertTransaction(payload);
     if (typeof this.repo.saveChlorineTransaction === 'function') {
       return this.repo.saveChlorineTransaction(payload);
     }

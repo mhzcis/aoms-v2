@@ -10,7 +10,9 @@
     "test": "vitest run",
     "lint": "node scripts/static-check.mjs && node scripts/verify-acceptance.mjs",
     "check": "npm run lint && npm run test && npm run build",
-    "test:db": "bash supabase/tests/run-all.sh aoms_test"
+    "test:db": "bash supabase/tests/run-all.sh aoms_test",
+    "test:db:embedded": "node supabase/tests/run-embedded-qa.mjs",
+    "test:qa:browser": "node e2e/run-approved-qa.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -31,6 +33,7 @@
     "uuid": "^11.1.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
     "@vitejs/plugin-react": "^5.0.2",
     "pg": "^8.23.1",
     "playwright": "^1.56.1",

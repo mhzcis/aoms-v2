@@ -45,16 +45,12 @@ function Gate({ mode, setMode }) {
         <Route element={<AppShell mode={mode} setMode={setMode} />}>
           <Route index element={<AomsDashboard />} />
           {AOMS_ROUTES.map(x => (
-            <Route key={x} path={x} element={<EntityPage type={x} />} />
+            <Route key={x} path={x} element={<EntityPage key={x} type={x} />} />
           ))}
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
-      {error && (
-        <Alert severity="error" sx={{ position: 'fixed', bottom: 16, left: 16, zIndex: 2000 }}>
-          {error}
-        </Alert>
-      )}
+
     </HashRouter>
   );
 }

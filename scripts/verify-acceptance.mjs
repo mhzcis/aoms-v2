@@ -685,7 +685,7 @@ async function runAll() {
       include_dynamic_fields: true,
     });
     assert.ok(rep.dynamicColumns.some(c => c.field_key === 'oil_pressure'));
-    assert.equal(rep.rows[0].dyn_oil_pressure, 4.5);
+    assert.equal(rep.rows.find(row => row.id === log1.id).dyn_oil_pressure, 4.5);
   });
 
   let backupDoc;
