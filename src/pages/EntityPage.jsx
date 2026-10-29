@@ -1,3 +1,8 @@
+import Select from '../components/AccessibleSelect';
+import AuditDetails, { auditActor, auditChanges } from '../components/AuditDetails';
+import { businessDateTime, businessTimeZone, newestFirst } from '../utils/businessTime';
+import { REPORT_SCOPE_LABELS } from '../domain/reportFilters';
+import { operatorErrors } from '../utils/operatorValidation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -18,7 +23,6 @@ import {
   InputLabel,
   MenuItem,
   Paper,
-  Select,
   Stack,
   Switch,
   Tab,
@@ -154,6 +158,7 @@ export function DynamicFieldInput({ field, options = [], value, onChange, disabl
       fullWidth
       size="small"
       type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'}
+      inputProps={field.field_type === 'number' ? { step: 'any' } : undefined}
       InputLabelProps={field.field_type === 'date' ? { shrink: true } : undefined}
       label={label}
       value={value ?? ''}
@@ -162,15 +167,6 @@ export function DynamicFieldInput({ field, options = [], value, onChange, disabl
     />
   );
 }
-
-// REPORT-011: human-readable scope labels for the report UI and export titles
-// (previously the raw key, e.g. "all_assets", leaked into the PDF/Excel title).
-const REPORT_SCOPE_LABELS = {
-  all_assets: 'جميع الأصول',
-  category: 'تصنيف كامل',
-  asset: 'أصل واحد',
-  multi_assets: 'مجموعة أصول مختارة',
-};
 
 const TIMELINE_ENTITY_TAB = {
   asset: 'assets',
@@ -197,14 +193,16 @@ const BACKUP_ENTITY_LABELS = {
 };
 
 export default function EntityPage({ type }) {
-  const { data, profile, online, service, runAction, refresh, setNotice } = useAoms();
+  const { data, profile, online, loading, service, runAction, refresh, setNotice } = useAoms();
   const [params] = useSearchParams();
   const nav = useNavigate();
 
+  const [saving, setSaving] = useState(false);
+  const mutationLock = useRef(false);
   const isAdmin = canAdmin(profile);
   const canOperate = canWrite(profile);
-  const canMutateAdmin = isAdmin && online;
-  const canMutateOperate = canOperate && online;
+  const canMutateAdmin = isAdmin && online && !saving;
+  const canMutateOperate = canOperate && online && !saving;
 
   const categories = data.categories || [];
   const categoryFields = data.category_fields || [];
@@ -220,7 +218,8 @@ export default function EntityPage({ type }) {
   const fuelTypes = data.fuel_types || [];
   const fuelTransactions = data.fuel_transactions || [];
   const chlorineTransactions = data.chlorine_transactions || [];
-  const byNewest = (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''));
+  const byNewest = newestFirst;
+  const timeZone = businessTimeZone(data);
   const timelineEvents = [...(data.timeline_events || [])].sort(byNewest);
   const auditLogs = [...(data.audit_logs || [])].sort(byNewest);
   const profiles = data.profiles || [];
@@ -230,6 +229,9 @@ export default function EntityPage({ type }) {
 
   // Version conflict wrapper
   const executeWithConflictGuard = async (fn, msg) => {
+    if (mutationLock.current) { const e = new Error('عملية حفظ قيد التنفيذ'); e.aomsReported = true; throw e; }
+    mutationLock.current = true;
+    setSaving(true);
     try {
       setConflictRecord(null);
       return await runAction(fn, msg);
@@ -238,7 +240,7 @@ export default function EntityPage({ type }) {
         setConflictRecord(err.currentRecord);
       }
       throw err;
-    }
+    } finally { mutationLock.current = false; setSaving(false); }
   };
 
   // ==================== 1. CATEGORIES & DYNAMIC FIELDS ====================
@@ -299,6 +301,11 @@ export default function EntityPage({ type }) {
     residual_chlorine_override: '',
   });
   const [assetDynValues, setAssetDynValues] = useState({});
+  const requireDynamicValues = (categoryId, scope, values) => {
+    const fields = categoryFields.filter(f => f.category_id === categoryId && (f.scope === scope || (scope === 'operation' && f.scope === 'operation_log')));
+    const errors = service.validateFields(fields, values, fieldOptions);
+    if (Object.keys(errors).length) { const id = Object.keys(errors)[0]; throw new Error(`${fields.find(f => f.id === id)?.label || 'الحقل'}: ${errors[id]}`); }
+  };
 
   // ==================== 3. OPERATORS ====================
   const [opDialog, setOpDialog] = useState(false);
@@ -560,7 +567,7 @@ export default function EntityPage({ type }) {
                           label={cat.status === 'active' ? 'نشط' : 'غير نشط'}
                         />
                         {isAdmin && (
-                          <IconButton
+                          <IconButton aria-label={`تعديل التصنيف ${cat.name}`} title={`تعديل التصنيف ${cat.name}`}
                             size="small"
                             disabled={!canMutateAdmin}
                             onClick={() => {
@@ -638,7 +645,7 @@ export default function EntityPage({ type }) {
                             {!f.is_active ? ' [معطل]' : ''}
                           </span>
                           {isAdmin && (
-                            <IconButton
+                            <IconButton aria-label={`تعديل الحقل ${f.label}`} title={`تعديل الحقل ${f.label}`}
                               size="small"
                               disabled={!canMutateAdmin}
                               onClick={() => {
@@ -646,7 +653,7 @@ export default function EntityPage({ type }) {
                                   .filter(o => o.field_id === f.id)
                                   .map(o => o.label)
                                   .join('\n');
-                                setFieldForm({ ...f });
+                                setFieldForm({ ...f, scope: f.scope === 'operation_log' ? 'operation' : f.scope });
                                 setFieldOptsText(opts);
                                 setFieldDialog(true);
                               }}
@@ -1090,7 +1097,7 @@ export default function EntityPage({ type }) {
                         </Typography>
                       </Box>
                       {isAdmin && (
-                        <IconButton
+                        <IconButton aria-label={`تعديل الأصل ${a.asset_code}`} title={`تعديل الأصل ${a.asset_code}`}
                           size="small"
                           disabled={!canMutateAdmin}
                           onClick={() => {
@@ -1387,18 +1394,17 @@ export default function EntityPage({ type }) {
               onClick={async () => {
                 if (assetForm.id) {
                   await executeWithConflictGuard(
-                    () =>
-                      service.updateAsset(
+                    () => { requireDynamicValues(assetForm.category_id, 'asset', assetDynValues); return service.updateAsset(
                         assetForm.id,
                         assetForm.version,
                         assetForm,
                         assetDynValues
-                      ),
+                      ); },
                     'تم تحديث الأصل بنجاح'
                   );
                 } else {
                   await executeWithConflictGuard(
-                    () => service.createAsset(assetForm, assetDynValues),
+                    () => { if (!String(assetForm.name || '').trim()) throw new Error('اسم الأصل مطلوب'); requireDynamicValues(assetForm.category_id, 'asset', assetDynValues); return service.createAsset(assetForm, assetDynValues); },
                     'تم إنشاء الأصل وتوليد الكود تلقائيًا'
                   );
                 }
@@ -1419,6 +1425,7 @@ export default function EntityPage({ type }) {
       [o.name, o.phone, o.notes].join(' ').toLowerCase().includes(q.toLowerCase())
     );
     const opsPage = pageRows('operators', filteredOps);
+    const opErrors = operatorErrors(opForm);
     return (
       <>
         <PageTitle
@@ -1477,7 +1484,7 @@ export default function EntityPage({ type }) {
                   </TableCell>
                   {isAdmin && (
                     <TableCell>
-                      <IconButton
+                      <IconButton aria-label={`تعديل المشغل ${op.name}`} title={`تعديل المشغل ${op.name}`}
                         size="small"
                         disabled={!canMutateAdmin}
                         onClick={() => {
@@ -1501,12 +1508,12 @@ export default function EntityPage({ type }) {
           <DialogContent>
             <Stack spacing={2} mt={1}>
               <TextField
-                label="اسم المشغل *"
+                label="اسم المشغل *" error={Boolean(opErrors.name)} helperText={opErrors.name || " "}
                 value={opForm.name}
                 onChange={e => setOpForm({ ...opForm, name: e.target.value })}
               />
               <TextField
-                label="رقم الهاتف"
+                label="رقم الهاتف" type="tel" error={Boolean(opErrors.phone)} helperText={opErrors.phone || "اختياري؛ مثل 0591234567 أو +970591234567"}
                 value={opForm.phone || ''}
                 onChange={e => setOpForm({ ...opForm, phone: e.target.value })}
               />
@@ -1532,7 +1539,7 @@ export default function EntityPage({ type }) {
             <Button onClick={() => setOpDialog(false)}>إلغاء</Button>
             <Button
               variant="contained"
-              disabled={!canMutateAdmin}
+              disabled={!canMutateAdmin || Object.keys(opErrors).length > 0}
               onClick={async () => {
                 await executeWithConflictGuard(
                   () => service.saveOperator(opForm),
@@ -1570,7 +1577,7 @@ export default function EntityPage({ type }) {
 
     const opFields = categoryFields
       .filter(
-        f => f.category_id === activeCategory?.id && f.scope === 'operation' && f.is_active
+        f => f.category_id === activeCategory?.id && ['operation', 'operation_log'].includes(f.scope) && f.is_active
       )
       .sort((a, b) => a.sort_order - b.sort_order);
 
@@ -1941,8 +1948,7 @@ export default function EntityPage({ type }) {
                     }
                     onClick={async () => {
                       await executeWithConflictGuard(
-                        () =>
-                          service.saveOperation(
+                        () => { requireDynamicValues(activeCategory.id, 'operation', opDynValues); return service.saveOperation(
                             {
                               ...opLogForm,
                               ...(isPump
@@ -1957,7 +1963,7 @@ export default function EntityPage({ type }) {
                               previous_reading: prevRead,
                             },
                             opDynValues
-                          ),
+                          ); },
                         opLogForm.id ? 'تم تحديث سجل التشغيل' : 'تم حفظ سجل التشغيل'
                       );
                       setOpLogForm({
@@ -2019,13 +2025,13 @@ export default function EntityPage({ type }) {
                 {activeCategory?.uses_meter && <TableCell>السابقة</TableCell>}
                 {activeCategory?.uses_meter && <TableCell>الحالية</TableCell>}
                 {activeCategory?.uses_meter && <TableCell>الفرق ({activeCategory.meter_unit})</TableCell>}
-                {activeCategory?.supports_fuel && <TableCell>الوقود</TableCell>}
+                {activeCategory?.supports_fuel && <TableCell>الوقود ({tankFuelType?.unit || activeCategory?.fuel_unit || 'لتر'})</TableCell>}
                 {isPump && <TableCell>المياه (م³)</TableCell>}
                 {isPump && <TableCell>الصهريج</TableCell>}
                 {isPump && <TableCell>النقلات</TableCell>}
                 {isPump && <TableCell>الموزعة (م³)</TableCell>}
                 {isPump && <TableCell>الشبكة (م³)</TableCell>}
-                {activeCategory?.supports_chlorine && <TableCell>الكلور</TableCell>}
+                {activeCategory?.supports_chlorine && <TableCell>الكلور ({activeCategory?.chlorine_unit || 'كجم'})</TableCell>}
                 <TableCell>الملاحظات</TableCell>
                 <TableCell>إجراءات</TableCell>
               </TableRow>
@@ -2055,7 +2061,7 @@ export default function EntityPage({ type }) {
                     <TableCell>
                       {isLast && canOperate ? (
                         <Stack direction="row" spacing={0.5}>
-                          <IconButton
+                          <IconButton aria-label={`تعديل سجل التشغيل ${l.operation_date}`} title={`تعديل سجل التشغيل ${l.operation_date}`}
                             size="small"
                             disabled={!canMutateOperate}
                             onClick={() => {
@@ -2091,7 +2097,7 @@ export default function EntityPage({ type }) {
                           >
                             <EditRounded fontSize="small" />
                           </IconButton>
-                          <IconButton
+                          <IconButton aria-label={`حذف سجل التشغيل ${l.operation_date}`} title={`حذف سجل التشغيل ${l.operation_date}`}
                             size="small"
                             color="error"
                             disabled={!canMutateOperate}
@@ -2365,14 +2371,14 @@ export default function EntityPage({ type }) {
                     <TableCell>
                       {isLast && canOperate ? (
                         <Stack direction="row" spacing={0.5}>
-                          <IconButton
+                          <IconButton aria-label={`تعديل حركة الوقود ${tx.transaction_date}`} title={`تعديل حركة الوقود ${tx.transaction_date}`}
                             size="small"
                             disabled={!canMutateOperate}
                             onClick={() => setFuelForm({ ...tx, adjustment_reason: tx.adjustment_reason || '' })}
                           >
                             <EditRounded fontSize="small" />
                           </IconButton>
-                          <IconButton
+                          <IconButton aria-label={`حذف حركة الوقود ${tx.transaction_date}`} title={`حذف حركة الوقود ${tx.transaction_date}`}
                             size="small"
                             color="error"
                             disabled={!canMutateOperate}
@@ -2603,14 +2609,14 @@ export default function EntityPage({ type }) {
                     <TableCell>
                       {isLast && canOperate ? (
                         <Stack direction="row" spacing={0.5}>
-                          <IconButton
+                          <IconButton aria-label={`تعديل حركة الكلور ${tx.transaction_date}`} title={`تعديل حركة الكلور ${tx.transaction_date}`}
                             size="small"
                             disabled={!canMutateOperate}
                             onClick={() => setChlForm({ ...tx, adjustment_reason: tx.adjustment_reason || '' })}
                           >
                             <EditRounded fontSize="small" />
                           </IconButton>
-                          <IconButton
+                          <IconButton aria-label={`حذف حركة الكلور ${tx.transaction_date}`} title={`حذف حركة الكلور ${tx.transaction_date}`}
                             size="small"
                             color="error"
                             disabled={!canMutateOperate}
@@ -2662,21 +2668,21 @@ export default function EntityPage({ type }) {
           badge={<Chip size="small" color="primary" icon={<AssessmentRounded />} label={`${reportResult.rows.length} صف`} />}
           action={
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Button variant="outlined" onClick={() => exportAomsCSV(reportResult)}>
+              <Button variant="outlined" disabled={!reportResult.valid} onClick={() => exportAomsCSV(reportResult)}>
                 تصدير CSV
               </Button>
               <Button
                 variant="outlined"
                 color="secondary"
                 startIcon={<PictureAsPdfRounded />}
-                onClick={() => exportAomsPDF(reportResult, `النطاق: ${REPORT_SCOPE_LABELS[repFilters.scope] || repFilters.scope}`).catch(e => setNotice({ type: 'error', text: e.message }))}
+                disabled={!reportResult.valid} onClick={() => exportAomsPDF(reportResult, `النطاق: ${REPORT_SCOPE_LABELS[repFilters.scope] || repFilters.scope}`, reportResult.filtersSummary).catch(e => setNotice({ type: 'error', text: e.message }))}
               >
                 طباعة / PDF
               </Button>
               <Button
                 variant="contained"
                 startIcon={<FileDownloadRounded />}
-                onClick={() => exportAomsExcel(reportResult, `النطاق: ${REPORT_SCOPE_LABELS[repFilters.scope] || repFilters.scope}`)}
+                disabled={!reportResult.valid} onClick={() => exportAomsExcel(reportResult, `النطاق: ${REPORT_SCOPE_LABELS[repFilters.scope] || repFilters.scope}`, reportResult.filtersSummary).catch(e => setNotice({ type: 'error', text: e.message }))}
               >
                 تصدير Excel
               </Button>
@@ -2812,6 +2818,8 @@ export default function EntityPage({ type }) {
           </Grid>
         </Paper>
 
+        {reportResult.filterError && <Alert severity="warning" role="alert" sx={{ mb: 2 }}>{reportResult.filterError}</Alert>}
+        <Typography variant="body2" sx={{ mb: 2, overflowWrap: 'anywhere' }}>{reportResult.filtersSummary}</Typography>
         <Alert severity="info" sx={{ mb: 2.5 }}>
           <b data-testid="report-summary">{usageSummary}</b>
         </Alert>
@@ -2891,7 +2899,7 @@ export default function EntityPage({ type }) {
               <Stack spacing={1}>
                 {list.map(item => (
                   <Box
-                    key={`${item.entity_type}-${item.entity_id}`}
+                    component="button" type="button" aria-label={`فتح ${item.title}`} key={`${item.entity_type}-${item.entity_id}`}
                     onClick={() =>
                       nav(
                         item.asset_id
@@ -2900,6 +2908,7 @@ export default function EntityPage({ type }) {
                       )
                     }
                     sx={{
+                      font: 'inherit', color: 'text.primary', textAlign: 'start', width: '100%', flexWrap: 'wrap',
                       p: 1.5,
                       borderRadius: 2.5,
                       bgcolor: 'action.hover',
@@ -2933,8 +2942,8 @@ export default function EntityPage({ type }) {
           </Paper>
         )}
         {globalQ.trim() && results.length === 0 && (
-          <Typography textAlign="center" color="text.secondary" p={4}>
-            لا توجد نتائج مطابقة في أي من الكيانات الستة.
+          <Typography role="status" textAlign="center" color="text.secondary" p={4}>
+            {loading ? 'جارٍ تحميل البيانات…' : 'لا توجد نتائج مطابقة في أي من الكيانات الستة.'}
           </Typography>
         )}
       </>
@@ -2950,9 +2959,10 @@ export default function EntityPage({ type }) {
         <PageTitle
           title="الخط الزمني وسجل التدقيق"
           subtitle="توثيق لحظي لجميع العمليات التشغيلية وسجل مراجعة التغييرات الإدارية (Before / After)"
-          badge={<Chip size="small" color="secondary" icon={<TimelineRounded />} label={`${timelineEvents.length} حدث`} />}
+          badge={<Chip size="small" color="secondary" icon={<TimelineRounded />} label={`${timeTab === 0 ? timelineEvents.length : auditLogs.length} حدث`} />}
         />
 
+        <Typography variant="body2" sx={{ mb: 1 }}>المنطقة الزمنية: <bdi>{timeZone}</bdi></Typography>
         {isAdmin && (
           <Tabs value={timeTab} onChange={(_, v) => setTimeTab(v)} sx={{ mb: 2.5 }}>
             <Tab label="الخط الزمني للأصول" />
@@ -2985,7 +2995,7 @@ export default function EntityPage({ type }) {
                       }
                     }}
                   >
-                    <TableCell className="tabular-nums">{String(evt.created_at || '').slice(0, 19).replace('T', ' ')}</TableCell>
+                    <TableCell className="tabular-nums">{businessDateTime(evt.created_at, timeZone)}</TableCell>
                     <TableCell>
                       <b>{evt.title}</b>
                     </TableCell>
@@ -3004,27 +3014,22 @@ export default function EntityPage({ type }) {
                     <TableCell>الوقت</TableCell>
                     <TableCell>العملية</TableCell>
                     <TableCell>الكيان</TableCell>
-                    <TableCell>قبل (Before JSON)</TableCell>
-                    <TableCell>بعد (After JSON)</TableCell>
+                    <TableCell>المنفذ</TableCell>
+                    <TableCell>التغيير والتفاصيل</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {auditPage.rows.map(log => (
                     <TableRow key={log.id}>
-                      <TableCell className="tabular-nums">{String(log.created_at || '').slice(0, 19).replace('T', ' ')}</TableCell>
+                      <TableCell className="tabular-nums">{businessDateTime(log.created_at, timeZone)}</TableCell>
                       <TableCell>
                         <Chip size="small" color="primary" label={log.action} />
                       </TableCell>
                       <TableCell fontWeight={700}>{log.entity_type}</TableCell>
-                      <TableCell>
-                        <code style={{ fontSize: 11, direction: 'ltr', display: 'inline-block' }}>
-                          {log.before_json ? JSON.stringify(log.before_json).slice(0, 120) : '—'}
-                        </code>
-                      </TableCell>
-                      <TableCell>
-                        <code style={{ fontSize: 11, direction: 'ltr', display: 'inline-block' }}>
-                          {log.after_json ? JSON.stringify(log.after_json).slice(0, 120) : '—'}
-                        </code>
+                      <TableCell sx={{ overflowWrap: 'anywhere' }}>{auditActor(log, profiles)}</TableCell>
+                      <TableCell sx={{ maxWidth: 400, overflowWrap: 'anywhere' }}>
+                        <Typography variant="body2" dir="auto">{auditChanges(log.before_json, log.after_json).join('، ') || '—'}</Typography>
+                        <AuditDetails log={log} profiles={profiles} timeZone={timeZone} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -3128,7 +3133,7 @@ export default function EntityPage({ type }) {
                   </TableCell>
                   {isAdmin && (
                     <TableCell>
-                      <IconButton
+                      <IconButton aria-label={`تعديل نوع الوقود ${ft.name}`} title={`تعديل نوع الوقود ${ft.name}`}
                         size="small"
                         disabled={!canMutateAdmin}
                         onClick={() => setFtForm({ ...ft })}
@@ -3250,7 +3255,7 @@ export default function EntityPage({ type }) {
                     />
                   </TableCell>
                   <TableCell>
-                    <IconButton
+                    <IconButton aria-label={`تعديل المستخدم ${p.full_name}`} title={`تعديل المستخدم ${p.full_name}`}
                       size="small"
                       disabled={!canMutateAdmin}
                       onClick={() => setUserForm({ ...p })}

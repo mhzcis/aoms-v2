@@ -13,7 +13,7 @@ export const BACKUP_SCHEMA_VERSION = '2.0';
 export const BACKUP_MAX_BYTES = 25 * 1024 * 1024;
 
 export const FIELD_TYPES = Object.freeze(['text', 'number', 'select', 'date', 'boolean']);
-export const FIELD_SCOPES = Object.freeze(['asset', 'operation', 'operation_log']);
+export const FIELD_SCOPES = Object.freeze(['asset', 'operation']);
 
 export const METER_UNITS = Object.freeze([
   'ساعة تشغيل',
@@ -113,13 +113,7 @@ export const addOneDayISO = dateStr => {
 
 export const nextDateISO = addOneDayISO;
 
-export const localTodayISO = () => {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
+export const localTodayISO = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 export const validateDynamicValue = (field, value, options = []) => {
   if (!field) return '';
@@ -221,7 +215,7 @@ export const validateDynamicFieldDef = (fieldInput, optionsInput = [], existingF
 
   if (!label) errors.label = 'التسمية الظاهرة مطلوبة';
   if (!key) errors.field_key = 'المفتاح الداخلي مطلوب';
-  if (!FIELD_SCOPES.includes(fieldInput?.scope)) errors.scope = 'نطاق الحقل غير صالح';
+  if (!FIELD_SCOPES.includes(normScope)) errors.scope = 'نطاق الحقل غير صالح';
   if (!FIELD_TYPES.includes(fieldInput?.field_type)) errors.field_type = 'نوع الحقل غير مدعوم';
 
   if (

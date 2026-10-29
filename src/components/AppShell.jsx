@@ -404,11 +404,12 @@ export default function AppShell({ mode = 'light', setMode }) {
             غير متصل — وضع القراءة فقط (جميع عمليات الإضافة والتعديل والحذف والاستعادة معطلة حتى عودة الاتصال)
           </Alert>
         )}
+        {aoms?.error && <Alert severity="error" role="alert" onClose={() => aoms.setError('')} sx={{ mb: 2, overflowWrap: 'anywhere' }}>{aoms.error}</Alert>}
         <Outlet />
       </Box>
 
-      <Snackbar open={!!notice} autoHideDuration={4000} onClose={() => setNotice?.(null)}>
-        <Alert severity={notice?.type || 'info'} variant="filled">
+      <Snackbar open={!!notice} autoHideDuration={notice?.type === 'error' ? null : 4000} onClose={(_, reason) => reason !== 'clickaway' && setNotice?.(null)}>
+        <Alert severity={notice?.type || 'info'} variant="filled" onClose={() => setNotice?.(null)}>
           {notice?.text}
         </Alert>
       </Snackbar>

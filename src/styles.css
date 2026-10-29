@@ -139,14 +139,26 @@ button:focus-visible {
 }
 
 @media (max-width: 600px) {
+  main { overflow-wrap: anywhere; }
+  main .MuiStack-root { min-width: 0; }
+  .MuiIconButton-root { min-width: 44px; min-height: 44px; }
+  .MuiButton-root { min-height: 44px; }
+  .MuiSelect-select { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .MuiDialogActions-root { flex-wrap: wrap; gap: 8px; }
   .MuiTableCell-root {
     padding: 8px 10px !important;
     font-size: 0.82rem;
+    overflow-wrap: anywhere;
+    min-width: 85px;
   }
   .MuiDialog-paper {
     margin: 8px !important;
     width: calc(100% - 16px) !important;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
 @media print {

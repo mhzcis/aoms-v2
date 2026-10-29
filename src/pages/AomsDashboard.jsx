@@ -1,3 +1,5 @@
+import Select from '../components/AccessibleSelect';
+import { businessTimeZone, businessDateTime, recentEvents } from '../utils/businessTime';
 import { useMemo, useState } from 'react';
 import {
   Alert,
@@ -9,7 +11,6 @@ import {
   Grid,
   InputLabel,
   MenuItem,
-  Select,
   Stack,
   TextField,
   Typography,
@@ -54,6 +55,7 @@ export default function AomsDashboard() {
   const fuelTransactions = data.fuel_transactions || [];
   const chlorineTransactions = data.chlorine_transactions || [];
   const timelineEvents = data.timeline_events || [];
+  const timeZone = businessTimeZone(data);
 
   const filteredAssets = useMemo(
     () =>
@@ -421,7 +423,7 @@ export default function AomsDashboard() {
                 </Typography>
               </Stack>
               <Stack spacing={1.25}>
-                {timelineEvents.slice(0, 6).map(evt => (
+                {recentEvents(timelineEvents, { timeZone, from: fromDate, to: toDate, ...((catFilter !== 'all' || assetFilter !== 'all') ? { assetIds: filteredAssetIds } : {}) }).map(evt => (
                   <Box
                     key={evt.id}
                     onClick={() =>
@@ -444,7 +446,7 @@ export default function AomsDashboard() {
                     <Chip
                       size="small"
                       variant="outlined"
-                      label={String(evt.created_at || '').slice(0, 10)}
+                      label={businessDateTime(evt.created_at, timeZone)}
                     />
                   </Box>
                 ))}

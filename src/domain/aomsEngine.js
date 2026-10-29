@@ -1,3 +1,6 @@
+import { reportFilterError, describeReportFilters } from './reportFilters.js';
+import { businessTimeZone } from '../utils/businessTime.js';
+import { normalizePhone, operatorErrors } from '../utils/operatorValidation.js';
 import {
   BACKUP_MAX_BYTES,
   BACKUP_SCHEMA_VERSION,
@@ -335,6 +338,7 @@ export class AomsEngine {
   }
 
   async saveCategoryField(fieldInput, optionsInput = []) {
+    fieldInput = { ...fieldInput, scope: fieldInput.scope === 'operation_log' ? 'operation' : fieldInput.scope };
     this.assertCanAdmin();
     const errors = validateDynamicFieldDef(fieldInput, optionsInput, this.state.category_fields);
     if (Object.keys(errors).length) {
@@ -743,6 +747,9 @@ export class AomsEngine {
   }
 
   async saveOperator(payload) {
+    const errors = operatorErrors(payload);
+    if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
+    payload = { ...payload, phone: normalizePhone(payload.phone) };
     this.assertCanAdmin();
     const name = String(payload.name || '').trim();
     if (!name) throw new Error('اسم المشغل مطلوب');
@@ -1818,7 +1825,7 @@ export function globalSearchState(state, query, userProfile = null) {
       asset_id: l.asset_id,
       record_id: l.id,
       tab_key: 'operation_logs',
-      title: `سجل تشغيل (${l.operation_date || l.log_date})`,
+      title: `${(state.assets || []).find(a => a.id === l.asset_id)?.asset_code || ''} — سجل تشغيل (${l.operation_date || l.log_date})`,
       subtitle: l.notes || '—',
     })),
     ...fuel_transactions.map(t => ({
@@ -1827,8 +1834,8 @@ export function globalSearchState(state, query, userProfile = null) {
       asset_id: t.asset_id,
       record_id: t.id,
       tab_key: 'fuel_transactions',
-      title: `حركة وقود (${t.transaction_date})`,
-      subtitle: `${t.quantity} ${t.unit_snapshot || ''}`,
+      title: `${(state.assets || []).find(a => a.id === t.asset_id)?.asset_code || ''} — حركة وقود (${t.transaction_date})`,
+      subtitle: `${t.quantity} ${t.unit_snapshot || (state.fuel_types || []).find(f => f.id === t.fuel_type_id)?.unit || ''} — ${t.invoice_number || t.reference_no || t.supplier || '—'}`,
     })),
     ...chlorine_transactions.map(t => ({
       entity_type: 'chlorine_transaction',
@@ -1836,8 +1843,8 @@ export function globalSearchState(state, query, userProfile = null) {
       asset_id: t.asset_id,
       record_id: t.id,
       tab_key: 'chlorine_transactions',
-      title: `حركة كلور (${t.transaction_date})`,
-      subtitle: `${t.quantity} ${t.unit_snapshot || ''}`,
+      title: `${(state.assets || []).find(a => a.id === t.asset_id)?.asset_code || ''} — حركة كلور (${t.transaction_date})`,
+      subtitle: `${t.quantity} ${t.unit_snapshot || (state.categories || []).find(c => c.id === (state.assets || []).find(a => a.id === t.asset_id)?.category_id)?.chlorine_unit || 'كجم'} — ${t.supplier || t.reference_no || '—'}`,
     })),
   ];
 
@@ -1861,17 +1868,35 @@ export function globalSearchState(state, query, userProfile = null) {
     fuel_transactions.length +
     chlorine_transactions.length +
     timeline_events.length;
-  return flatItems;
+  return flatItems.sort((a, b) => String(a.entity_type).localeCompare(String(b.entity_type)) || String(a.title).localeCompare(String(b.title), 'ar', { numeric: true }) || String(a.entity_id).localeCompare(String(b.entity_id)));
 }
 
+const reportRowOrder = (a, b) => String(b.event_date || b.operation_date || b.log_date || b.transaction_date || b.created_at || '').localeCompare(String(a.event_date || a.operation_date || a.log_date || a.transaction_date || a.created_at || '')) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.id).localeCompare(String(b.id));
+
 export function buildAomsReport(state, filters = {}) {
-  const type =
-    filters.type ||
-    (filters.eventType === 'fuel'
-      ? 'fuel'
-      : filters.eventType === 'chlorine'
-        ? 'chlorine'
-        : 'operations');
+  if (filters.scope) {
+    filters = { ...filters,
+      category_id: filters.scope === 'category' ? (filters.category_id || filters.categoryId) : '',
+      categoryId: filters.scope === 'category' ? (filters.category_id || filters.categoryId) : '',
+      asset_id: filters.scope === 'asset' ? (filters.asset_id || filters.assetId) : '',
+      assetId: filters.scope === 'asset' ? (filters.asset_id || filters.assetId) : '',
+      assetIds: filters.scope === 'multi_assets' ? filters.assetIds : [],
+    };
+  }
+  const type = filters.type || ({ fuel: 'fuel', chlorine: 'chlorine', all: 'events' }[filters.eventType] || 'operations');
+  const filterError = reportFilterError(state, filters);
+  const metadata = { valid: !filterError, filterError, filtersSummary: describeReportFilters(state, filters), timeZone: businessTimeZone(state) };
+  if (filterError) return { type, rows: [], dynamicColumns: [], summary: { count: 0 }, ...metadata };
+  if (type === 'events' || type === 'all') {
+    const parts = ['operations', 'fuel', 'chlorine'].map(source => buildAomsReport(state, { ...filters, type: source }));
+    const eventLabels = { operations: 'سجل تشغيل', fuel: 'حركة وقود', chlorine: 'حركة كلور' };
+    const rows = parts.flatMap(part => part.rows.map(row => ({
+      ...row, source_id: row.id, id: `${part.type}:${row.id}`, event_type: part.type,
+      event_type_label: eventLabels[part.type], event_date: row.log_date || row.transaction_date,
+    }))).sort(reportRowOrder);
+    return { type: 'events', rows, dynamicColumns: parts[0].dynamicColumns,
+      summary: { ...parts[0].summary, count: rows.length, event_counts: Object.fromEntries(parts.map(p => [p.type, p.rows.length])) }, ...metadata };
+  }
   const from = filters.from || '';
   const to = filters.to || '';
   const category_id = filters.category_id || filters.categoryId || 'all';
@@ -1879,7 +1904,7 @@ export function buildAomsReport(state, filters = {}) {
   const assetIds = Array.isArray(filters.assetIds) ? filters.assetIds : [];
   const operator_id = filters.operator_id || filters.operatorId || 'all';
   const record_type = filters.record_type || 'all';
-  const fuel_type_id = filters.fuel_type_id || 'all';
+  const fuel_type_id = filters.fuel_type_id || filters.fuelTypeId || 'all';
   const status = filters.status || 'all';
   const edited = filters.edited || 'all';
   const q = filters.q || '';
@@ -1919,10 +1944,11 @@ export function buildAomsReport(state, filters = {}) {
               (type === 'assets'
                 ? f.scope === 'asset'
                 : type === 'operations'
-                  ? isOpScope(f.scope)
+                  ? (f.scope === 'asset' || isOpScope(f.scope))
                   : false)
           )
           .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map(f => type === 'operations' && f.scope === 'asset' ? { ...f, report_key: `dyn_asset:${f.id}`, report_label: `${f.label}${f.unit ? ` (${f.unit})` : ''} (الأصل)` } : f)
       : [];
 
   const logValuesAll = state.operation_log_field_values || state.operation_log_values || [];
@@ -1974,10 +2000,10 @@ export function buildAomsReport(state, filters = {}) {
         const op = (state.operators || []).find(o => o.id === l.operator_id);
         const dyn = {};
         for (const f of dynamicColumns) {
-          const vRow = logValuesAll.find(
-            v => v.operation_log_id === l.id && v.field_id === f.id
-          );
-          dyn[`dyn_${f.field_key}`] = resolveDynValue(vRow, f);
+          const vRow = f.scope === 'asset'
+            ? (state.asset_field_values || []).find(v => v.asset_id === l.asset_id && v.field_id === f.id)
+            : logValuesAll.find(v => v.operation_log_id === l.id && v.field_id === f.id);
+          dyn[f.report_key || `dyn_${f.field_key}`] = resolveDynValue(vRow, f);
         }
         const dStr = l.operation_date || l.log_date;
         const delta = l.net_operation_delta ?? l.usage_value ?? 0;
@@ -1990,6 +2016,8 @@ export function buildAomsReport(state, filters = {}) {
           operation_date: dStr,
           net_operation_delta: delta,
           usage_value: delta,
+          fuel_consumed_unit: (state.fuel_types || []).find(f => f.id === (l.fuel_type_id || asset?.fuel_type_id))?.unit || 'لتر',
+          chlorine_consumed_unit: cat?.chlorine_unit || 'كجم',
           asset_code: asset?.asset_code || '—',
           asset_name: asset?.name || '—',
           category_name: cat?.name || '—',
@@ -2129,16 +2157,16 @@ export function buildAomsReport(state, filters = {}) {
             f.category_id === cat.id &&
             f.is_active &&
             f.show_in_reports &&
-            (type === 'assets' ? f.scope === 'asset' : isOpScope(f.scope))
+            (type === 'assets' ? f.scope === 'asset' : f.scope === 'asset' || isOpScope(f.scope))
         )
         .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
         .map(f =>
           single
-            ? f
+            ? (type === 'operations' && f.scope === 'asset' ? { ...f, report_key: `dyn_asset:${f.id}`, report_label: `${f.label}${f.unit ? ` (${f.unit})` : ''} (الأصل)` } : f)
             : {
                 ...f,
                 report_key: `dyn_${f.id}`,
-                report_label: `${f.label}${f.unit ? ` (${f.unit})` : ''} — ${cat.name}`,
+                report_label: `${f.label}${f.unit ? ` (${f.unit})` : ''}${f.scope === 'asset' && type === 'operations' ? ' (الأصل)' : ''} — ${cat.name}`,
               }
         )
     );
@@ -2151,11 +2179,9 @@ export function buildAomsReport(state, filters = {}) {
           dyn[key] = '';
           continue;
         }
-        const vRow = valuesFor.find(v =>
-          type === 'assets'
-            ? v.asset_id === r.id && v.field_id === f.id
-            : v.operation_log_id === r.id && v.field_id === f.id
-        );
+        const vRow = f.scope === 'asset'
+          ? (state.asset_field_values || []).find(v => v.asset_id === (type === 'assets' ? r.id : r.asset_id) && v.field_id === f.id)
+          : valuesFor.find(v => v.operation_log_id === r.id && v.field_id === f.id);
         dyn[key] = resolveDynValue(vRow, f);
       }
       return { ...r, ...dyn };
@@ -2164,6 +2190,7 @@ export function buildAomsReport(state, filters = {}) {
 
   const netByUnit = {};
   let fuelTotal = 0;
+  const fuelByUnit = {};
   let chlorineTotal = 0;
   const chlorineByUnit = {};
   let waterTotal = 0;
@@ -2178,6 +2205,7 @@ export function buildAomsReport(state, filters = {}) {
       const unit = r.meter_unit_snapshot || 'بلا عداد';
       netByUnit[unit] = roundNum((netByUnit[unit] || 0) + Number(r.net_operation_delta || 0));
       fuelTotal = roundNum(fuelTotal + Number(r.fuel_consumed || 0));
+      if (Number(r.fuel_consumed || 0)) fuelByUnit[r.fuel_consumed_unit] = roundNum((fuelByUnit[r.fuel_consumed_unit] || 0) + Number(r.fuel_consumed));
       chlorineTotal = roundNum(chlorineTotal + Number(r.chlorine_consumed || 0));
       if (Number(r.chlorine_consumed || 0)) {
         const cu = catById.get(r.category_id)?.chlorine_unit || 'كجم';
@@ -2191,6 +2219,7 @@ export function buildAomsReport(state, filters = {}) {
     net_operation_by_unit: netByUnit,
     usageByUnit: netByUnit,
     fuel_consumed_total: fuelTotal,
+    fuel_consumed_by_unit: fuelByUnit,
     totalFuelConsumed: fuelTotal,
     chlorine_consumed_total: chlorineTotal,
     totalChlorineConsumed: chlorineTotal,
@@ -2202,7 +2231,8 @@ export function buildAomsReport(state, filters = {}) {
 
   return {
     type,
-    rows,
+    rows: rows.sort(reportRowOrder),
+    ...metadata,
     dynamicColumns,
     dynamicColumnsMeta: dynamicColumns,
     summary,

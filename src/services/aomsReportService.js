@@ -1,3 +1,4 @@
+import { businessDateTime } from '../utils/businessTime';
 import ExcelJS from 'exceljs';
 import { loadAmiriFonts } from '../assets/fonts/amiriFontData';
 import { niceDate, stamp, todayArabic } from '../utils/dates';
@@ -43,16 +44,26 @@ export function getAomsReportColumns(typeOrDynCols = 'operations', dynamicColumn
       { key: 'net_operation_delta', label: 'صافي التشغيل' },
       { key: 'meter_unit_snapshot', label: 'الوحدة' },
       { key: 'fuel_consumed', label: 'الوقود المستهلك' },
+      { key: 'fuel_consumed_unit', label: 'وحدة استهلاك الوقود' },
       { key: 'water_total', label: 'إجمالي المياه (م³)' },
       { key: 'tanker_label', label: 'الصهريج' },
       { key: 'trips_count', label: 'عدد النقلات' },
       { key: 'distributed_quantity', label: 'الكمية الموزعة (م³)' },
       { key: 'network_quantity', label: 'كمية الشبكة (م³)' },
       { key: 'chlorine_consumed', label: 'الكلور المستهلك' },
+      { key: 'chlorine_consumed_unit', label: 'وحدة استهلاك الكلور' },
       { key: 'residual_chlorine', label: 'الكلور المتبقي' },
       { key: 'status_label', label: 'الحالة' },
       { key: 'notes', label: 'الملاحظات' },
       ...dynCols,
+    ];
+  }
+  if (type === 'events') {
+    const op = getAomsReportColumns('operations', dynamicColumns).filter(c => c.key !== 'log_date');
+    const tx = getAomsReportColumns('fuel').filter(c => ['fuel_type_name', 'transaction_type_label', 'quantity', 'unit_snapshot', 'reference_no'].includes(c.key));
+    return [
+      { key: 'event_date', label: 'التاريخ', format: v => niceDate(v) },
+      { key: 'event_type_label', label: 'نوع الحدث' }, ...op, ...tx,
     ];
   }
   if (type === 'fuel') {
@@ -116,8 +127,11 @@ export function formatUsageSummaryText(summaryOrMap = {}) {
     .map(([u, v]) => `${v} (${u})`)
     .join(' | ');
   const parts = [`إجمالي السجلات: ${summary.count || 0}`];
+  if (summary.event_counts) parts.push(`تشغيل: ${summary.event_counts.operations || 0} • وقود: ${summary.event_counts.fuel || 0} • كلور: ${summary.event_counts.chlorine || 0}`);
   if (byUnit) parts.push(`صافي التشغيل حسب الوحدة: ${byUnit}`);
-  if (summary.fuel_consumed_total) parts.push(`إجمالي الوقود المستهلك: ${summary.fuel_consumed_total}`);
+  const fuelUnits = Object.entries(summary.fuel_consumed_by_unit || {});
+  if (fuelUnits.length) parts.push(`الوقود المستهلك حسب الوحدة: ${fuelUnits.map(([u, v]) => `${v} (${u})`).join(' | ')}`);
+  else if (summary.fuel_consumed_total) parts.push(`إجمالي الوقود المستهلك: ${summary.fuel_consumed_total}`);
   if (summary.water_total) {
     parts.push(
       `إجمالي المياه: ${summary.water_total} م³ (صهاريج: ${summary.water_distributed_total || 0} م³ • شبكة: ${summary.water_network_total || 0} م³)`
@@ -149,6 +163,7 @@ const triggerDownload = (blob, filename) => {
 };
 
 export function exportAomsCSV(report, title = 'تقرير إدارة وتشغيل الأصول والمعدات') {
+  if (report.valid === false) throw new Error(report.filterError || 'أكمل فلاتر التقرير أولًا');
   const cols = getAomsReportColumns(report.type, report.dynamicColumns);
   const escapeCsv = val => {
     let s = val === null || val === undefined || val === '' ? '—' : String(val);
@@ -167,12 +182,13 @@ export function exportAomsCSV(report, title = 'تقرير إدارة وتشغي�
       .join(',')
   );
   const summaryLine = escapeCsv(formatUsageSummaryText(report.summary));
-  const csvContent = '\uFEFF' + [escapeCsv(title), summaryLine, header, ...lines].join('\r\n');
+  const csvContent = '\uFEFF' + [escapeCsv(`${title} — ${report.filtersSummary || 'الفلاتر: الكل'} — وقت التصدير: ${businessDateTime(new Date(), report.timeZone)} (${report.timeZone || 'Asia/Jerusalem'})`), summaryLine, header, ...lines].join('\r\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   return triggerDownload(blob, `aoms-report-${report.type}-${stamp()}.csv`);
 }
 
-export async function exportAomsExcel(report, title = 'تقرير نظام إدارة وتشغيل الأصول والمعدات', filtersSummary = 'الكل') {
+export async function exportAomsExcel(report, title = 'تقرير نظام إدارة وتشغيل الأصول والمعدات', filtersSummary = report.filtersSummary || 'الكل') {
+  if (report.valid === false) throw new Error(report.filterError || 'أكمل فلاتر التقرير أولًا');
   const cols = getAomsReportColumns(report.type, report.dynamicColumns);
   const wb = new ExcelJS.Workbook();
   wb.creator = 'إدارة وتشغيل الأصول والمعدات — م. محمد أبو زهري';
@@ -193,11 +209,12 @@ export async function exportAomsExcel(report, title = 'تقرير نظام إد�
 
   ws.mergeCells(2, 1, 2, colCount);
   const metaCell = ws.getCell(2, 1);
-  metaCell.value = `تاريخ التصدير: ${todayArabic()} | الفلاتر: ${filtersSummary}`;
+  metaCell.value = `تاريخ التصدير: ${businessDateTime(new Date(), report.timeZone)} (${report.timeZone || 'Asia/Jerusalem'}) | الفلاتر: ${filtersSummary}`;
   metaCell.font = { name: 'Tajawal', size: 10, bold: true, color: { argb: BRAND.slateText } };
   metaCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND.tealSoft } };
   metaCell.alignment = { horizontal: 'right', vertical: 'middle' };
-  ws.getRow(2).height = 22;
+  metaCell.alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
+  ws.getRow(2).height = Math.max(44, Math.ceil(String(metaCell.value).length / 140) * 16);
 
   ws.mergeCells(3, 1, 3, colCount);
   const sumCell = ws.getCell(3, 1);
@@ -255,7 +272,8 @@ export const PDF_RTL_TEXT_OPTIONS = Object.freeze({
   isSymmetricSwapping: true,
 });
 
-export async function exportAomsPDF(report, title = 'تقرير نظام إدارة وتشغيل الأصول والمعدات', filtersSummary = 'الكل', fonts = null) {
+export async function exportAomsPDF(report, title = 'تقرير نظام إدارة وتشغيل الأصول والمعدات', filtersSummary = report.filtersSummary || 'الكل', fonts = null) {
+  if (report.valid === false) throw new Error(report.filterError || 'أكمل فلاتر التقرير أولًا');
   const cols = getAomsReportColumns(report.type, report.dynamicColumns);
   const [{ jsPDF }, { default: autoTable }, { amiriRegular, amiriBold }] = await Promise.all([
     import('jspdf'),
@@ -279,9 +297,20 @@ export async function exportAomsPDF(report, title = 'تقرير نظام إدا�
   doc.setTextColor(...PDF_RGB.slateText);
   doc.setFont('Amiri', 'normal');
   doc.setFontSize(10);
-  doc.text(`تاريخ التصدير: ${todayArabic()} | الفلاتر: ${filtersSummary}`, pageWidth - 28, 72, { align: 'right', ...PDF_RTL_TEXT_OPTIONS });
+  const metaLines = doc.splitTextToSize(`تاريخ التصدير: ${businessDateTime(new Date(), report.timeZone)} (${report.timeZone || 'Asia/Jerusalem'}) | الفلاتر: ${filtersSummary}`, pageWidth - 56);
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let metadataY = 72;
+  const writeLines = lines => {
+    for (const line of lines) {
+      if (metadataY > pageHeight - 50) { doc.addPage(); metadataY = 32; }
+      doc.text(line, pageWidth - 28, metadataY, { align: 'right', ...PDF_RTL_TEXT_OPTIONS });
+      metadataY += 14;
+    }
+  };
+  writeLines(metaLines);
   doc.setFont('Amiri', 'bold');
-  doc.text(formatUsageSummaryText(report.summary), pageWidth - 28, 90, { align: 'right', ...PDF_RTL_TEXT_OPTIONS });
+  metadataY += 8;
+  writeLines(doc.splitTextToSize(formatUsageSummaryText(report.summary), pageWidth - 56));
 
   const reversedCols = [...cols].reverse();
   const head = [reversedCols.map(c => c.label)];
@@ -293,8 +322,8 @@ export async function exportAomsPDF(report, title = 'تقرير نظام إدا�
     })
   );
 
-  // REPORT-011 (responsive): wide operations reports have 15+ columns on one A4 page. Give every column
-  // at least the width of its longest single word so autotable wraps between words, never inside one.
+  // Bound column widths and paginate horizontally: squeezing every field onto one
+  // sheet either clips data or makes Arabic unreadable. Repeat date/asset identity.
   const FONT_SIZE = 8;
   const PADDING = 3;
   doc.setFontSize(FONT_SIZE);
@@ -326,13 +355,15 @@ export async function exportAomsPDF(report, title = 'تقرير نظام إدا�
   const columnStyles = {};
   reversedCols.forEach((_, i) => {
     const minWord = Math.max(longestWord([head[0][i]], 'bold'), longestWord(body.map(r => r[i]), 'normal'));
-    columnStyles[i] = { minCellWidth: Math.min(minWord + 2 * PADDING + 0.5, 90) };
+    columnStyles[i] = { cellWidth: Math.max(48, Math.min(minWord + 2 * PADDING + 0.5, 110)) };
   });
   doc.setFont('Amiri', 'normal');
 
   autoTable(doc, {
-    startY: 104,
-    margin: { left: 20, right: 20 },
+    startY: metadataY + 12,
+    margin: { left: 20, right: 20, top: 28, bottom: 32 },
+    horizontalPageBreak: true,
+    horizontalPageBreakRepeat: reversedCols.flatMap((c, i) => ['log_date', 'event_date', 'transaction_date', 'asset_code'].includes(c.key) ? [i] : []),
     head,
     body,
     columnStyles,
@@ -355,6 +386,14 @@ export async function exportAomsPDF(report, title = 'تقرير نظام إدا�
       fillColor: PDF_RGB.zebra,
     },
   });
+
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.setFontSize(9);
+    doc.setTextColor(...PDF_RGB.slateMuted);
+    doc.text(`${page} / ${pageCount}`, pageWidth / 2, pageHeight - 14, { align: 'center' });
+  }
 
   if (typeof window !== 'undefined' && typeof URL?.createObjectURL === 'function') {
     doc.save(`aoms-report-${report.type}-${stamp()}.pdf`);
