@@ -26,15 +26,21 @@ export class AomsService {
     }
   }
 
+  cachedSnapshot() {
+    const cached = Object.fromEntries(AOMS_TABLES.map(t=>[t,this.repo.cached(t)]));
+    const entries = AOMS_TABLES.map(t=>this.repo.cache?.get(t));
+    cached.__snapshot = {cached:true,at:entries.filter(Boolean).map(x=>x.at).sort()[0]||null,failedTables:AOMS_TABLES.filter((_,i)=>!entries[i])};
+    return cached;
+  }
   async load() {
     try {
       if (!isBrowserOnline()) {
-        return Object.fromEntries(AOMS_TABLES.map(t => [t, this.repo.cached(t)]));
+        return this.cachedSnapshot();
       }
       return await this.repo.snapshot();
     } catch (e) {
       if (!isBrowserOnline()) {
-        return Object.fromEntries(AOMS_TABLES.map(t => [t, this.repo.cached(t)]));
+        return this.cachedSnapshot();
       }
       throw e;
     }
@@ -53,6 +59,8 @@ export class AomsService {
   }
 
   async saveCategory(payload, currentCategories = [], currentAssets = []) {
+    payload = {...payload};
+    for (const key of ['fuel_unit','default_fuel_rate','default_chlorine_consumption','default_residual_chlorine']) delete payload[key];
     this.assertOnline();
     if (typeof this.repo.saveCategory === 'function') {
       return this.repo.saveCategory(payload);
@@ -88,6 +96,7 @@ export class AomsService {
           ? Number(payload.default_residual_chlorine)
           : null,
     };
+    for (const key of ['fuel_unit','default_fuel_rate','default_chlorine_consumption','default_residual_chlorine']) delete clean[key];
     if (payload.id) {
       return this.repo.update('categories', payload.id, clean, payload.version);
     }
@@ -301,6 +310,15 @@ export class AomsService {
     return validateAndPreviewBackup(doc, rawByteLength);
   }
 
+  async previewReset() {
+    this.assertOnline();
+    return typeof this.repo.previewReset === 'function' ? this.repo.previewReset() : this.repo.invoke('aoms_reset_preview');
+  }
+  async resetData(confirmation,fingerprint) {
+    this.assertOnline();
+    if(confirmation !== 'مسح شامل' || !fingerprint) throw new Error('التأكيد ومعاينة البيانات مطلوبان');
+    return typeof this.repo.resetData === 'function' ? this.repo.resetData(confirmation,fingerprint) : this.repo.invoke('reset_aoms_data',{p_confirmation:confirmation,p_expected_fingerprint:fingerprint});
+  }
   async backup() {
     this.assertOnline();
     if (typeof this.repo.exportBackup === 'function') {

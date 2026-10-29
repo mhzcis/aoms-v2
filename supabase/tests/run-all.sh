@@ -16,7 +16,7 @@ done
 }
 # each suite runs on its own freshly built database
 RC=0
-for T in run-db-tests.mjs run-db-acceptance.mjs; do
+for T in run-db-tests.mjs run-db-acceptance.mjs run-workflow-db-tests.mjs; do
   build_db
   echo "=== suite $T"
   PGURL="postgres://$PGUSER@$PGHOST:$PGPORT/$DB" timeout 300 node "$ROOT/supabase/tests/$T" || RC=1

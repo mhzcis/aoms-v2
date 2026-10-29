@@ -28,7 +28,9 @@ const asset = await engine.createAsset({ category_id: category.id, name: 'مضخ
 const operator = await engine.saveOperator({ name: 'مشغل QA', phone: '0591234567' });
 await engine.saveFuelTransaction({ asset_id: asset.id, fuel_type_id: fuel.id, transaction_type: 'supply', transaction_date: yesterday, quantity: 1000, invoice_number: 'QA-FUEL-01' });
 await engine.saveChlorineTransaction({ asset_id: asset.id, transaction_type: 'receipt', transaction_date: yesterday, quantity: 500 });
-await engine.saveOperationLog({ asset_id: asset.id, operator_id: operator.id, operation_date: yesterday, previous_reading: 100, current_reading: 101, chlorine_consumed: 2 });
+const tankerCategory=await engine.saveCategory({name:'شاحنات QA',code_prefix:'QAT',asset_kind:'tanker',uses_meter:false,supports_fuel:false,supports_chlorine:false});
+const tanker=await engine.createAsset({category_id:tankerCategory.id,name:'شاحنة QA'});
+await engine.saveOperationLog({ asset_id: asset.id, operator_id: operator.id, operation_date: yesterday, previous_reading: 100, current_reading: 101, chlorine_consumed: 2, tanker_id:tanker.id,trips_count:2,distributed_quantity:6 });
 engine.state.audit_logs.push({ id: '00000000-0000-4000-8000-000000000099', entity_id: asset.id, entity_type: 'fuel_transaction', user_id: profiles[0].id, action: 'update', created_at: new Date(Date.now() + 1000).toISOString(), before_json: { notes: 'QA'.repeat(180), quantity: 10 }, after_json: { notes: 'QA'.repeat(180), quantity: 12 } });
 engine.state.timeline_events.push({ id: '00000000-0000-4000-8000-000000000098', asset_id: asset.id, title: 'QA أحدث حدث', created_at: new Date(Date.now() + 1000).toISOString() });
 const role = roles.includes(params.get('role')) ? params.get('role') : 'admin';

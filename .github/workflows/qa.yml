@@ -2,7 +2,7 @@ name: AOMS QA regression checks
 on:
   pull_request:
   push:
-    branches: ['fix/approved-qa-remediation-*']
+    branches: ['fix/approved-qa-remediation-*', 'feat/professional-reports-*']
 permissions:
   contents: read
 jobs:

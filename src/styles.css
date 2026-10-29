@@ -186,3 +186,12 @@ button:focus-visible {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(20, 184, 166, 0.75);
 }
+/* Locked values remain legible and are distinct from fields that require input. */
+.MuiOutlinedInput-root.Mui-disabled,.MuiOutlinedInput-root.MuiInputBase-readOnly { background:repeating-linear-gradient(135deg,rgba(100,116,139,.07),rgba(100,116,139,.07) 5px,rgba(100,116,139,.025) 5px,rgba(100,116,139,.025) 10px); }
+.MuiOutlinedInput-root.Mui-disabled .MuiOutlinedInput-notchedOutline,.MuiOutlinedInput-root.MuiInputBase-readOnly .MuiOutlinedInput-notchedOutline { border-style:dashed; border-width:1.5px; }
+.MuiInputBase-input.Mui-disabled { -webkit-text-fill-color:var(--locked-input-color, #64748b); opacity:1; }
+.locked-field .MuiFormHelperText-root { font-weight:500; }
+.export-preview { border-collapse:collapse; min-width:100%; font-size:.85rem; }
+.export-preview th,.export-preview td { padding:8px 12px;border:1px solid #cbd5e1;white-space:nowrap; }
+.export-preview th { background:#115e59;color:white; }
+@media(max-width:600px){.report-export-dialog .MuiDialog-paper{margin:8px;width:calc(100% - 16px);max-height:calc(100% - 16px)}}
