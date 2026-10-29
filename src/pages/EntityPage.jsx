@@ -1251,7 +1251,7 @@ export default function EntityPage({ type }) {
                   </FormHelperText>
                 </FormControl>
               )}
-              {formCat?.supports_fuel && assetForm.fuel_type_id && <TextField required type="number" label={`استهلاك الوقود الافتراضي للأصل (${fuelTypes.find(f=>f.id===assetForm.fuel_type_id)?.unit || 'لتر'}/ساعة)`} value={assetForm.fuel_rate_override} inputProps={{min:0,step:'any'}} onChange={e=>setAssetForm({...assetForm,has_fuel_rate_override:true,fuel_rate_override:e.target.value})} helperText="قيمة خاصة بهذا الأصل؛ الوحدة مأخوذة من نوع الوقود المختار" />}
+              {formCat?.supports_fuel && assetForm.fuel_type_id && <TextField required type="number" label={`استهلاك الوقود الافتراضي للأصل (${fuelTypes.find(f=>f.id===assetForm.fuel_type_id)?.unit || 'لتر'}/${formCat?.meter_unit || 'وحدة تشغيل'})`} value={assetForm.fuel_rate_override} inputProps={{min:0,step:'any'}} onChange={e=>setAssetForm({...assetForm,has_fuel_rate_override:true,fuel_rate_override:e.target.value})} helperText="قيمة خاصة بهذا الأصل؛ الوحدة مأخوذة من نوع الوقود المختار" />}
               {formIsPump && (
                 <>
                   <TextField

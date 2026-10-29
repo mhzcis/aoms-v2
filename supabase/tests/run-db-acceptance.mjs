@@ -354,12 +354,12 @@ async function main() {
     return 'non-eligible: chlorine forced to 0 / residual NULL';
   });
   await check('OPLOG-020', 'editing the last log recalculates the fuel balance', async () => {
-    const before = await fuelBal(inh.id, ft1.id); // 1000 - 30
+    const before = await fuelBal(inh.id, ft1.id); // 1000 - (10 × captured asset rate 2)
     const l = await one(su, `select * from public.operation_logs where asset_id=$1 order by operation_date desc limit 1`, [inh.id]);
     await saveLog(operator, { id: l.id, version: l.version, operation_date: l.operation_date, previous_reading: 0, current_reading: 20, fuel_type_id: ft1.id });
     const after = await fuelBal(inh.id, ft1.id);
-    assert(before === 970 && after === 940, `before ${before} after ${after}`);
-    return 'balance 970 → 940 after usage 10→20 (rate 3)';
+    assert(before === 980 && after === 960, `before ${before} after ${after}`);
+    return 'balance 980 → 960 after usage 10→20 (asset rate 2)';
   });
   await check('OPLOG-021', 'create/edit/delete of a log write timeline + audit entries', async () => {
     const l = await one(su, `select * from public.operation_logs where asset_id=$1 order by operation_date desc limit 1`, [inh.id]);

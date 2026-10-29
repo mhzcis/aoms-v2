@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const clients=[];
 const connect=async()=>{const c=new pg.Client({connectionString:process.env.PGURL});await c.connect();clients.push(c);return c;};
 const one=async(c,sql,p=[])=> (await c.query(sql,p)).rows[0];
-const rpc=async(c,name,...p)=>(await one(c,`select public.${name}(${p.map((_,i)=>`$${i+1}`).join(',')}) r`,p.map(x=>typeof x==='object'?JSON.stringify(x):x))).r;
+const rpc=async(c,name,...p)=>(await one(c,`select to_jsonb(x) r from public.${name}(${p.map((_,i)=>`$${i+1}`).join(',')}) x`,p.map(x=>typeof x==='object'?JSON.stringify(x):x))).r;
 let passed=0;
 const check=async(name,fn)=>{await fn();passed++;console.log(`PASS WORKFLOW-DB-${passed}: ${name}`);};
 const rejects=async fn=>{let error;try{await fn();}catch(e){error=e;}assert.ok(error,'database must reject');};

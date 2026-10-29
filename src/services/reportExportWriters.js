@@ -35,6 +35,7 @@ export async function writeExcel(report,title){
   detail.eachRow((row,i)=>{row.font={name:'Arial',size:11,color:{argb:INK}};row.alignment={vertical:'top',horizontal:'right',wrapText:true};let lines=1;report.columns.forEach((c,j)=>{const v=row.getCell(j+1).value;const text=v instanceof Date?'00/00/0000':String(v??'');lines=Math.max(lines,...text.split('\n').map(t=>Math.ceil(t.length/Math.max(8,c.width-3))));});row.height=Math.max(27,lines*15+8);if(i===1){row.font={name:'Arial',bold:true,size:11,color:{argb:'FFFFFFFF'}};row.fill={type:'pattern',pattern:'solid',fgColor:{argb:TEAL}};}});
   detail.pageSetup.printTitlesRow='1:1';detail.pageSetup.printArea=`A1:${detail.getColumn(report.columns.length).letter}${Math.max(1,detail.rowCount)}`;
   let identity=0;for(let i=0;i<Math.min(3,report.columns.length);i++){if(['log_date','event_date','transaction_date','asset_code'].includes(report.columns[i].key))identity=i+1;}
+  if(identity && identity<report.columns.length)detail.views=[{rightToLeft:true,state:'frozen',xSplit:identity,ySplit:1}];
   if(identity)detail.pageSetup.printTitlesColumn=`A:${detail.getColumn(identity).letter}`;
   const literal=s=>String(s).replace(/&/g,'&&');
   for(const ws of [overview,detail])ws.headerFooter={oddHeader:`&R${literal(title)}`,oddFooter:`&R${literal(report.sortLabel)}&Cصفحة &P من &N&L AOMS`};
