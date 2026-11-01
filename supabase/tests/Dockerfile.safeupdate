@@ -1,0 +1,10 @@
+# Test-only PostgreSQL image. Production configuration is never altered.
+FROM postgres:17
+ARG SAFEUPDATE_COMMIT=37dbc9c4acf5e2504adf2b218e9c6b41751022f3
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential postgresql-server-dev-17 git ca-certificates \
+ && git clone https://github.com/eradman/pg-safeupdate.git /tmp/pg-safeupdate \
+ && git -C /tmp/pg-safeupdate checkout "$SAFEUPDATE_COMMIT" \
+ && make -C /tmp/pg-safeupdate PG_CONFIG=/usr/lib/postgresql/17/bin/pg_config \
+ && make -C /tmp/pg-safeupdate PG_CONFIG=/usr/lib/postgresql/17/bin/pg_config install \
+ && rm -rf /tmp/pg-safeupdate /var/lib/apt/lists/*
