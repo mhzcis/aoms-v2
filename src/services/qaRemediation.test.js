@@ -1,3 +1,4 @@
+import { reportCell } from '../domain/reportTableModel';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ExcelJS from 'exceljs';
 import { readFileSync } from 'node:fs';
@@ -68,7 +69,7 @@ describe('approved QA regression: reports F01/F05/F06/F10/F11', () => {
     await exportAomsExcel(r);
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await blobs[1].arrayBuffer());
     const ws = wb.getWorksheet('الملخص'); expect(ws.getCell(2, 2).value).toContain(r.filtersSummary);
-    expect(ws.getCell(4, 2).value).toContain('Asia/Jerusalem'); expect(wb.getWorksheet('التفاصيل').rowCount).toBe(r.rows.length+1);
+    expect(ws.getCell(4, 2).value).toContain('Asia/Jerusalem'); expect(wb.getWorksheet('التفاصيل').rowCount).toBe(r.rows.length+2);
   });
   it('mixed fuel units are labelled individually in the summary rather than added as one unit', () => {
     const copy = structuredClone(state); copy.fuel_types.push({ id: 'g', name: 'وقود آخر', unit: 'جالون' });
@@ -79,7 +80,7 @@ describe('approved QA regression: reports F01/F05/F06/F10/F11', () => {
     const cells = [];
     const actual = (await vi.importActual('jspdf-autotable')).default;
     const spy = pdfTable.default.mockImplementation((doc, options) => actual(doc, {
-      ...options, didDrawCell: data => cells.push({ x: data.cell.x, width: data.cell.width, text: data.cell.text.join(' '), section: data.section }),
+      ...options, didDrawCell: data => cells.push({ x: data.cell.x, width: data.cell.width, text: data.cell.text.join(' '), section: data.section, halign:data.cell.styles.halign,valign:data.cell.styles.valign }),
     }));
     try {
       const fonts = Object.fromEntries(['Regular', 'Bold'].map(style => [`amiri${style}`, readFileSync(`public/fonts/Amiri-${style}.ttf`).toString('base64')]));
@@ -88,9 +89,11 @@ describe('approved QA regression: reports F01/F05/F06/F10/F11', () => {
       expect(doc.getNumberOfPages()).toBeGreaterThan(1);
       const pageWidth = doc.internal.pageSize.getWidth();
       expect(cells.length).toBeGreaterThan(0);
+      for(const cell of cells){expect(cell.halign).toBe('center');expect(cell.valign).toBe('middle');}
+      expect(cells.some(c=>c.section==='foot'&&c.text.includes('الإجمالي'))).toBe(true);
       for (const cell of cells) { expect(cell.x).toBeGreaterThanOrEqual(19.9); expect(cell.x + cell.width).toBeLessThanOrEqual(pageWidth - 19.9); }
       const headings = cells.filter(c => c.section === 'head').map(c => c.text.replace(/\s/g, ''));
-      for (const col of getAomsReportColumns(report.type, report.dynamicColumns)) expect(headings).toContain(col.label.replace(/\s/g, ''));
+      for (const col of getAomsReportColumns(report.type, report.dynamicColumns,report)) expect(headings).toContain(col.label.replace(/\s/g, ''));
       expect(cells.some(c => c.text.includes('QA-TOKEN'))).toBe(true);
       expect(cells.filter(c => c.section === 'body' && c.text.includes('PMP-0002')).length).toBeGreaterThanOrEqual(report.rows.length * 2);
     } finally { spy.mockImplementation(actual); }

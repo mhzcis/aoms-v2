@@ -5,7 +5,7 @@ import { writeExcel } from './reportExportWriters';
 import { assetDefaults, tankerDistributions, RESET_TABLES } from '../domain/workflowSettings';
 import { AomsEngine, INITIAL_AOMS_STATE } from '../domain/aomsEngine';
 const columns=[{key:'log_date',label:'التاريخ'},{key:'asset_code',label:'رمز الأصل'},{key:'fuel_consumed',label:'الوقود'},{key:'notes',label:'الملاحظات'}];
-const report={type:'operations',valid:true,filtersSummary:'أصل QA / 2026-10-01 — 2026-10-29',rows:[{id:'b',log_date:'2026-10-29',asset_code:'0002',fuel_consumed:0,notes:'=SUM(A1)'},{id:'a',log_date:'2026-10-01',asset_code:'0001',fuel_consumed:12,notes:'سري'},{id:'c',asset_code:'0003'}],summary:{fuel_consumed_by_unit:{'لتر':12,'جالون':3}}};
+const report={type:'operations',valid:true,filtersSummary:'أصل QA / 2026-10-01 — 2026-10-29',rows:[{id:'b',log_date:'2026-10-29',asset_code:'0002',fuel_consumed:0,fuel_consumed_unit:'لتر',notes:'=SUM(A1)'},{id:'a',log_date:'2026-10-01',asset_code:'0001',fuel_consumed:12,fuel_consumed_unit:'لتر',notes:'سري'},{id:'c',asset_code:'0003',fuel_consumed_unit:'لتر'}],summary:{fuel_consumed_by_unit:{'لتر':12}}};
 const prepare=(options={},r=report)=>prepareReportExport(r,columns,{generatedAt:'2026-10-29T12:00:00Z',...options});
 describe('professional report contract',()=>{
  it('selection removes fields from rows, metadata metrics and file; preserves leading-zero code',async()=>{
@@ -21,8 +21,8 @@ describe('professional report contract',()=>{
   expect(()=>prepare({columnKeys:[]})).toThrow('اختر');expect(()=>prepare({}, {...report,exportError:'فشل التحميل'})).toThrow('فشل التحميل');
   expect(reportExportError({__snapshot:{failedTables:['operation_logs']}},'operations')).not.toBe('');expect(reportExportError({__snapshot:{failedTables:['audit_logs']}},'operations')).toBe('');
  });
- it('keeps mixed-unit totals separate and includes zero without treating it as missing',async()=>{
-  const r=prepare();expect(r.metrics.filter(m=>m.label==='الوقود المستهلك').map(m=>m.unit)).toEqual(['لتر','جالون']);
+ it('keeps unit totals labelled and includes zero without treating it as missing',async()=>{
+  const r=prepare();expect(r.metrics.filter(m=>m.label==='الوقود المستهلك').map(m=>m.unit)).toEqual(['لتر']);
   const wb=await writeExcel(r,'اختبار');const ws=wb.getWorksheet('التفاصيل');expect(ws.getCell('C2').value).toBe(0);expect(ws.getCell('C4').value).toBeNull();expect(ws.getCell('D2').formula).toBeUndefined();
   expect(ws.getCell('A2').value).toBeInstanceOf(Date);expect(ws.pageSetup.printTitlesRow).toBe('1:1');expect(ws.views[0].ySplit).toBe(1);expect(ws.pageSetup.paperSize).toBe(9);expect(ws.model.tables).toHaveLength(1);
  });
@@ -31,7 +31,7 @@ describe('professional report contract',()=>{
  it('empty filtered results produce a valid workbook with headers and zero summary',async()=>{const wb=await writeExcel(prepare({}, {...report,rows:[],summary:{}}),'فارغ');const copy=new ExcelJS.Workbook();await copy.xlsx.load(await wb.xlsx.writeBuffer());expect(copy.getWorksheet('التفاصيل').getCell('A1').value).toBe('التاريخ');expect(copy.getWorksheet('الملخص').getCell(5,2).value).toBe(0);});
  it('exports all 10001 rows rather than a UI page or PostgREST default cap',async()=>{
   const r=prepare({columnKeys:['asset_code','fuel_consumed']},{...report,rows:Array.from({length:10001},(_,i)=>({id:String(i),asset_code:`P-${i}`,fuel_consumed:i/10,log_date:'2026-10-29'}))});
-  const wb=await writeExcel(r,'حجم كبير');expect(wb.getWorksheet('التفاصيل').rowCount).toBe(10002);expect(wb.getWorksheet('الملخص').getCell(5,2).value).toBe(10001);
+  const wb=await writeExcel(r,'حجم كبير');expect(wb.getWorksheet('التفاصيل').rowCount).toBe(10003);expect(wb.getWorksheet('الملخص').getCell(5,2).value).toBe(10001);
  },30000);
 });
 describe('workflow defaults, distribution and reset',()=>{

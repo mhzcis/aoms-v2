@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, Switch, Typography } from '@mui/material';
 import TextField from './AppTextField';
 import { getAomsReportColumns, exportAomsExcel, exportAomsPDF } from '../services/aomsReportService';
+import { TOTALS_NOTE } from '../domain/reportTableModel';
 import { prepareReportExport } from '../domain/reportExportModel';
 
 export default function ReportExportDialog({ snapshot, onClose, onError, currentSourceAt, onRefresh }) {
-  const columns = useMemo(() => getAomsReportColumns(snapshot.report.type, snapshot.report.dynamicColumns),[snapshot]);
+  const columns = useMemo(() => getAomsReportColumns(snapshot.report.type, snapshot.report.dynamicColumns,snapshot.report),[snapshot]);
   const [keys,setKeys] = useState(() => columns.map(c=>c.key));
   const [query,setQuery] = useState(''); const [newest,setNewest] = useState(true); const [orientation,setOrientation] = useState('auto'); const [busy,setBusy] = useState(false);
   const [localError,setLocalError] = useState('');
@@ -43,7 +44,7 @@ export default function ReportExportDialog({ snapshot, onClose, onError, current
         {!visible.length && <Typography>لا توجد حقول بهذا الاسم</Typography>}
       </Box>
       {!keys.length && <Alert severity="warning" sx={{mt:2}}>اختر عمودًا واحدًا على الأقل</Alert>}
-      {prepared && <Box sx={{overflow:'auto',mt:2}}><Typography fontWeight={700}>معاينة أول 3 سجلات — {prepared.sortLabel}</Typography><table className="export-preview"><thead><tr>{prepared.columns.map(c=><th key={c.key}>{c.label}</th>)}</tr></thead><tbody>{prepared.rows.slice(0,3).map((r,i)=><tr key={i}>{prepared.columns.map(c=><td key={c.key}>{String(c.format?c.format(r[c.key],r):r[c.key]??'—')}</td>)}</tr>)}</tbody></table></Box>}
+      {prepared && <Box sx={{overflow:'auto',mt:2}}><Typography fontWeight={700}>معاينة أول 3 سجلات — {prepared.sortLabel}</Typography><table className="export-preview"><thead><tr>{prepared.columns.map(c=><th key={c.key}>{c.label}</th>)}</tr></thead><tbody>{prepared.rows.slice(0,3).map((r,i)=><tr key={i}>{prepared.columns.map(c=><td key={c.key}>{String(c.format?c.format(r[c.key],r):r[c.key]??'—')}</td>)}</tr>)}</tbody><tfoot><tr>{prepared.columns.map(c=><td key={c.key}>{Object.hasOwn(prepared.totals,c.key)?`${c.key===prepared.totalLabelKey?'الإجمالي: ':''}${prepared.totals[c.key]}`:c.key===prepared.totalLabelKey?'الإجمالي':'—'}</td>)}</tr></tfoot></table><Typography variant="caption">الإجماليات لكامل النتائج وليست لعينة المعاينة. {TOTALS_NOTE}</Typography></Box>}
     </DialogContent>
     <DialogActions><Button onClick={onClose} disabled={busy}>إلغاء</Button><Button variant="contained" disabled={!keys.length||busy} onClick={exportFile}>{busy?'جارٍ إنشاء الملف…':snapshot.format==='excel'?'إنشاء Excel':'إنشاء PDF'}</Button></DialogActions>
   </Dialog>;
