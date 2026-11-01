@@ -1,3 +1,4 @@
+import { reportCell, reportTotals, reportTotalLabelKey, TOTALS_NOTE } from '../domain/reportTableModel';
 import ReportExportDialog from '../components/ReportExportDialog';
 import DataResetPanel from '../components/DataResetPanel';
 import { reportExportError } from '../domain/reportExportModel';
@@ -36,6 +37,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TableFooter,
   TableRow,
   Tabs,
   Tooltip,
@@ -2586,7 +2588,8 @@ export default function EntityPage({ type }) {
     reportResult.sourceAt = data.__snapshot?.at || null;
     reportResult.cached = Boolean(data.__snapshot?.cached);
     const openExport = format => setExportSnapshot({format,report:structuredClone(reportResult),at:new Date().toISOString(),title:'تقرير إدارة وتشغيل الأصول والمعدات'});
-    const cols = getAomsReportColumns(reportResult.type, reportResult.dynamicColumns);
+    const cols = getAomsReportColumns(reportResult.type, reportResult.dynamicColumns,reportResult);
+    const tableTotals=reportTotals(reportResult,cols),totalLabelKey=reportTotalLabelKey(cols,tableTotals);
     const reportPage = pageRows('reports', reportResult.rows, JSON.stringify(scopedFilters));
     // identical summary text to the one written into the CSV/Excel/PDF files (REPORT-007/008)
     const usageSummary = formatUsageSummaryText(reportResult.summary);
@@ -2758,7 +2761,7 @@ export default function EntityPage({ type }) {
         </Alert>
 
         <TableContainer component={Paper} sx={{ maxHeight: 620 }}>
-          <Table size="small" stickyHeader>
+          <Table size="small" stickyHeader className="aoms-report-table">
             <TableHead>
               <TableRow>
                 {cols.map(c => (
@@ -2773,7 +2776,7 @@ export default function EntityPage({ type }) {
                     <TableCell key={c.key}>
                       {(() => {
                         // same rule as the CSV/Excel/PDF exports so screen and files match (REPORT-008)
-                        const v = r[c.key];
+                        const v = reportCell(r,c);
                         if (v === null || v === undefined || v === '') return '—';
                         return c.format ? c.format(v, r) : v;
                       })()}
@@ -2782,8 +2785,10 @@ export default function EntityPage({ type }) {
                 </TableRow>
               ))}
             </TableBody>
+            <TableFooter><TableRow className="report-totals" data-testid="report-totals">{cols.map(c=><TableCell key={c.key}>{Object.hasOwn(tableTotals,c.key)?`${c.key===totalLabelKey?'الإجمالي: ':''}${tableTotals[c.key]}`:c.key===totalLabelKey?'الإجمالي':'—'}</TableCell>)}</TableRow></TableFooter>
           </Table>
         </TableContainer>
+        <Typography variant="caption" component="p" sx={{mt:1}}>الإجماليات لجميع النتائج المطابقة للفلاتر، وتشمل جميع صفحات العرض. {TOTALS_NOTE}</Typography>
         <PagedFooter paged={reportPage} testId="paging-report" />
       </>
     );

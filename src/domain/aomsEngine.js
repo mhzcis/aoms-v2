@@ -2129,6 +2129,8 @@ export function buildAomsReport(state, filters = {}) {
           ...a,
           category_name: cat?.name || '—',
           fuel_type_name: ft?.name || (cat?.supports_fuel ? NO_FUEL_LABEL : '—'),
+          fuel_rate_unit: ft?.unit ? `${ft.unit}${cat?.uses_meter&&cat.meter_unit?`/${cat.meter_unit.replace('ساعة تشغيل','ساعة')}`:''}` : null,
+          chlorine_consumed_unit: cat?.chlorine_unit || null,
           pump_capacity: a.pump_capacity ?? '',
           default_tanker_label: a.default_tanker_id
             ? tankerLabel((state.assets || []).find(x => x.id === a.default_tanker_id)) || '—'

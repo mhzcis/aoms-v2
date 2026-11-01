@@ -1,9 +1,10 @@
+import { reportTableColumns, reportCell, reportTotals, reportTotalLabelKey } from '../domain/reportTableModel';
 import { prepareReportExport } from '../domain/reportExportModel';
 import { writeExcel, writePDF } from './reportExportWriters';
 import { businessDateTime } from '../utils/businessTime';
 import { niceDate, stamp } from '../utils/dates';
 
-export function getAomsReportColumns(typeOrDynCols = 'operations', dynamicColumns = []) {
+function baseReportColumns(typeOrDynCols = 'operations', dynamicColumns = []) {
   const type = Array.isArray(typeOrDynCols) ? 'operations' : (typeOrDynCols || 'operations');
   if (Array.isArray(typeOrDynCols)) dynamicColumns = typeOrDynCols;
   const dynCols = (dynamicColumns || []).map(f => ({
@@ -39,8 +40,8 @@ export function getAomsReportColumns(typeOrDynCols = 'operations', dynamicColumn
     ];
   }
   if (type === 'events') {
-    const op = getAomsReportColumns('operations', dynamicColumns).filter(c => c.key !== 'log_date');
-    const tx = getAomsReportColumns('fuel').filter(c => ['fuel_type_name', 'transaction_type_label', 'quantity', 'unit_snapshot', 'reference_no'].includes(c.key));
+    const op = baseReportColumns('operations', dynamicColumns).filter(c => c.key !== 'log_date');
+    const tx = baseReportColumns('fuel').filter(c => ['fuel_type_name', 'transaction_type_label', 'quantity', 'unit_snapshot', 'reference_no'].includes(c.key));
     return [
       { key: 'event_date', label: 'التاريخ', format: v => niceDate(v) },
       { key: 'event_type_label', label: 'نوع الحدث' }, ...op, ...tx,
@@ -98,6 +99,10 @@ export function getAomsReportColumns(typeOrDynCols = 'operations', dynamicColumn
   ];
 }
 
+export function getAomsReportColumns(type='operations',dynamicColumns=[],report={}) {
+  return reportTableColumns(report,baseReportColumns(type,dynamicColumns));
+}
+
 export function formatUsageSummaryText(summaryOrMap = {}) {
   const summary =
     summaryOrMap && summaryOrMap.net_operation_by_unit
@@ -144,7 +149,7 @@ const triggerDownload = (blob, filename) => {
 
 export function exportAomsCSV(report, title = 'تقرير إدارة وتشغيل الأصول والمعدات') {
   if (report.valid === false) throw new Error(report.filterError || 'أكمل فلاتر التقرير أولًا');
-  const cols = getAomsReportColumns(report.type, report.dynamicColumns);
+  const cols = getAomsReportColumns(report.type, report.dynamicColumns,report);
   const escapeCsv = val => {
     let s = val === null || val === undefined || val === '' ? '—' : String(val);
     // CSV/formula injection (REPORT-010): text starting with = + - @ TAB CR is neutralised with a leading '
@@ -155,22 +160,24 @@ export function exportAomsCSV(report, title = 'تقرير إدارة وتشغي�
   const lines = (report.rows || []).map(row =>
     cols
       .map(c => {
-        const raw = row[c.key];
+        const raw = reportCell(row,c);
         const formatted = c.format ? c.format(raw, row) : raw;
         return escapeCsv(formatted);
       })
       .join(',')
   );
   const summaryLine = escapeCsv(formatUsageSummaryText(report.summary));
-  const csvContent = '\uFEFF' + [escapeCsv(`${title} — ${report.filtersSummary || 'الفلاتر: الكل'} — وقت التصدير: ${businessDateTime(new Date(), report.timeZone)} (${report.timeZone || 'Asia/Jerusalem'})`), summaryLine, header, ...lines].join('\r\n');
+  const totals=reportTotals(report,cols);const label=reportTotalLabelKey(cols,totals);
+  const totalLine=cols.map(c=>escapeCsv(Object.hasOwn(totals,c.key)?totals[c.key]:c.key===label?'الإجمالي':'—')).join(',');
+  const csvContent = '\uFEFF' + [escapeCsv(`${title} — ${report.filtersSummary || 'الفلاتر: الكل'} — وقت التصدير: ${businessDateTime(new Date(), report.timeZone)} (${report.timeZone || 'Asia/Jerusalem'})`), summaryLine, header, ...lines, totalLine].join('\r\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   return triggerDownload(blob, `aoms-report-${report.type}-${stamp()}.csv`);
 }
 
 export async function exportAomsExcel(report, title = 'تقرير إدارة وتشغيل الأصول والمعدات', filtersSummary = report.filtersSummary || 'الكل', options = {}) {
-  return writeExcel(prepareReportExport({...report,filtersSummary}, getAomsReportColumns(report.type, report.dynamicColumns), options), title);
+  return writeExcel(prepareReportExport({...report,filtersSummary}, getAomsReportColumns(report.type, report.dynamicColumns,report), options), title);
 }
 export { PDF_RTL_TEXT_OPTIONS } from './reportExportWriters';
 export async function exportAomsPDF(report, title = 'تقرير إدارة وتشغيل الأصول والمعدات', filtersSummary = report.filtersSummary || 'الكل', fonts = null, options = {}) {
-  return writePDF(prepareReportExport({...report,filtersSummary}, getAomsReportColumns(report.type, report.dynamicColumns), {...options,format:'pdf'}), title, fonts);
+  return writePDF(prepareReportExport({...report,filtersSummary}, getAomsReportColumns(report.type, report.dynamicColumns,report), {...options,format:'pdf'}), title, fonts);
 }

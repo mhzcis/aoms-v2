@@ -1,3 +1,4 @@
+import { reportCell } from '../domain/reportTableModel';
 // Acceptance tests for reports & exports (spec §14, REPORT-001..011, FIELD-011, CHL-006).
 // Real engine + real exporters; CSV/XLSX are captured as the Blob the browser would download and parsed back.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -61,7 +62,7 @@ describe('buildAomsReport scopes and rules (spec §14)', () => {
     const r = buildAomsReport(state, { scope: 'category', categoryId: 'c-gen' });
     expect(codes(r)).toEqual(['GEN-0001', 'GEN-0001', 'GEN-0002']);
     expect(r.dynamicColumns.map(f => f.field_key)).toEqual(['pressure', 'oil_temp']);
-    const labels = getAomsReportColumns(r.type, r.dynamicColumns).map(c => c.label);
+    const labels = getAomsReportColumns(r.type, r.dynamicColumns,r).map(c => c.label);
     expect(labels).toContain('حرارة الزيت (°C)');
     expect(labels).not.toContain('ملاحظة داخلية');
     expect(r.rows.every(x => !('dyn_secret' in x))).toBe(true);
@@ -81,7 +82,7 @@ describe('buildAomsReport scopes and rules (spec §14)', () => {
   });
   it('REPORT-006 multi-category: common columns first, category-labelled dynamic columns, non-applicable values empty', () => {
     const r = buildAomsReport(state, { scope: 'multi_assets', assetIds: ['a-g1', 'a-w1'] });
-    const cols = getAomsReportColumns(r.type, r.dynamicColumns);
+    const cols = getAomsReportColumns(r.type, r.dynamicColumns,r);
     const dynIdx = cols.findIndex(c => c.key.startsWith('dyn_'));
     expect(cols.slice(0, dynIdx).every(c => !c.key.startsWith('dyn_'))).toBe(true);
     expect(cols.slice(dynIdx).map(c => c.label)).toEqual(['ضغط — تصنيف GEN', 'حرارة الزيت (°C) — تصنيف GEN', 'منسوب البئر (م) — تصنيف WEL']);
@@ -138,7 +139,7 @@ describe('exports (captured Blob, parsed back)', () => {
     const bytes = new Uint8Array(await blobs[0].arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]); // UTF-8 BOM so Excel opens Arabic correctly
     const rows = parseCsv(new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes).slice(1));
-    const cols = getAomsReportColumns(r.type, r.dynamicColumns);
+    const cols = getAomsReportColumns(r.type, r.dynamicColumns,r);
     expect(rows[2]).toEqual(cols.map(c => c.label));
     const notesIdx = cols.findIndex(c => c.key === 'notes');
     const notes = rows.slice(3).map(x => x[notesIdx]);
@@ -148,7 +149,7 @@ describe('exports (captured Blob, parsed back)', () => {
     expect(notes.every(n => !/^[=+\-@]/.test(n))).toBe(true);
     // every data cell equals the value rendered on screen (format + '—' for empty)
     r.rows.forEach((row, i) => cols.forEach((c, j) => {
-      const v = row[c.key];
+      const v = reportCell(row,c);
       const shown = v === null || v === undefined || v === '' ? '—' : String(c.format ? c.format(v, row) : v);
       expect(rows[3 + i][j].replace(/^'(?=[=+\-@])/, '')).toBe(shown);
     }));
@@ -162,13 +163,13 @@ describe('exports (captured Blob, parsed back)', () => {
     await wb.xlsx.load(Buffer.from(await blobs[0].arrayBuffer()));
     const ws = wb.getWorksheet('التفاصيل');
     expect(ws.views[0].rightToLeft).toBe(true);
-    const cols = getAomsReportColumns(r.type, r.dynamicColumns);
+    const cols = getAomsReportColumns(r.type, r.dynamicColumns,r);
     expect(cols.map((c, i) => ws.getRow(1).getCell(i + 1).value)).toEqual(cols.map(c => c.label));
     expect(ws.pageSetup.printTitlesRow).toBe('1:1');
     expect(ws.views[0].ySplit).toBe(1);
     expect(wb.getWorksheet('الملخص').getCell(5,2).value).toBe(r.rows.length);
     r.rows.forEach((row, i) => cols.forEach((c, j) => {
-      const v = row[c.key];
+      const v = reportCell(row,c);
       const shown = v === null || v === undefined || v === '' ? null : ['log_date','transaction_date','event_date'].includes(c.key) ? new Date(`${v}T00:00:00Z`) : exportColumn(c,r.dynamicColumns).type==='number' ? Number(v) : String(v);
       expect(ws.getRow(2 + i).getCell(j + 1).value).toEqual(shown);
     }));

@@ -35,6 +35,15 @@ try {
     assert.ok((await page.getByRole('main').innerText()).includes('QA-DYNAMIC-TOKEN'));
     assert.deepEqual(errors, []); await page.screenshot({ path: `${out}/reports-desktop.png` }); await context.close();
   });
+  await check('report styling: units in headers, centered cells and a colored full-result totals row',async()=>{
+    const {page,context,errors}=await fixture({pageName:'/reports'});
+    for(const name of ['صافي التشغيل (ساعة)','الوقود المستهلك (لتر)','الكلور المستهلك (كجم)'])await page.getByRole('columnheader',{name,exact:true}).waitFor();
+    for(const name of ['الوحدة','وحدة استهلاك الوقود','وحدة استهلاك الكلور'])assert.equal(await page.getByRole('columnheader',{name,exact:true}).count(),0);
+    const total=page.getByTestId('report-totals');assert.ok((await total.innerText()).includes('الإجمالي'));
+    const appearance=await total.locator('td').first().evaluate(c=>({align:getComputedStyle(c).textAlign,vertical:getComputedStyle(c).verticalAlign,background:getComputedStyle(c).backgroundColor}));
+    assert.equal(appearance.align,'center');assert.equal(appearance.vertical,'middle');assert.equal(appearance.background,'rgb(17, 94, 89)');
+    await page.getByRole('button',{name:'تصدير Excel',exact:true}).click();await page.getByRole('dialog').getByRole('checkbox',{name:'الوقود المستهلك (لتر)',exact:true}).waitFor();assert.deepEqual(errors,[]);await context.close();
+  });
   await check('reports: missing scope disables all exports and displays the reason', async () => {
     const { page, context } = await fixture({ pageName: '/reports' });
     await page.getByRole('combobox', { name: 'نطاق التقرير', exact: true }).click();
