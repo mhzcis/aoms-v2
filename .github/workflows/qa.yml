@@ -2,7 +2,7 @@ name: AOMS QA regression checks
 on:
   pull_request:
   push:
-    branches: ['fix/approved-qa-remediation-*', 'feat/professional-reports-*']
+    branches: ['fix/approved-qa-remediation-*', 'feat/professional-reports-*', 'fix/safeupdate-*']
 permissions:
   contents: read
 jobs:
@@ -45,3 +45,31 @@ jobs:
       - run: npm ci
       - run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - run: bash supabase/tests/run-all.sh aoms_qa
+
+  safeupdate-postgresql:
+    runs-on: ubuntu-latest
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: aoms-ci-local
+      AOMS_WORKFLOW_ONLY: 1
+      AOMS_TEST_SAFEUPDATE: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: docker build -t aoms-safeupdate-test -f supabase/tests/Dockerfile.safeupdate .
+      - run: docker run -d --name aoms-safeupdate-test -p 5432:5432 -e POSTGRES_PASSWORD=aoms-ci-local aoms-safeupdate-test
+      - name: Wait for disposable PostgreSQL
+        run: |
+          for attempt in {1..30}; do
+            if docker exec aoms-safeupdate-test pg_isready -U postgres; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - run: bash supabase/tests/run-all.sh aoms_safeupdate
+      - if: always()
+        run: docker rm -f aoms-safeupdate-test
