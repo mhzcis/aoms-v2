@@ -108,7 +108,7 @@ try {
     const {page,context,errors}=await fixture({pageName:'/categories'});
     await page.getByRole('button',{name:'حذف الحقل وصف QA',exact:true}).click();const d=page.getByRole('dialog');const del=d.getByRole('button',{name:'حذف الحقل وقيمه',exact:true});assert.equal(await del.isDisabled(),true);assert.ok((await d.innerText()).includes('قيم الأصول: 1'));
     await d.getByLabel('اكتب حذف الحقل للتأكيد',{exact:true}).fill('حذف الحقل');await del.click();await d.waitFor({state:'hidden'});assert.equal(await page.getByRole('button',{name:'حذف الحقل وصف QA',exact:true}).count(),0);
-    await page.getByRole('link').filter({hasText:'الأصول والمعدات'}).click();await page.getByRole('heading',{name:'الأصول والمعدات',exact:true}).waitFor();await page.getByText('مضخة QA',{exact:true}).waitFor();
+    await page.getByRole('link').filter({hasText:'الأصول والمعدات'}).click();await page.getByRole('heading',{name:'الأصول والمعدات',exact:true}).waitFor();await page.getByRole('heading',{name:/QAP-0001.*مضخة QA/}).waitFor();
     await page.getByRole('link').filter({hasText:'سجلات التشغيل'}).click();await page.getByLabel('الكلور المتبقي في المياه (mg/l)',{exact:true}).waitFor();assert.deepEqual(errors,[]);await context.close();
   });
   await check('dynamic scope has one operation option', async () => {
