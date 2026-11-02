@@ -2,7 +2,7 @@
 const UNIT_COLUMNS=new Set(['meter_unit_snapshot','fuel_consumed_unit','chlorine_consumed_unit','unit_snapshot']);
 const UNIT_FIELDS={previous_reading:'meter_unit_snapshot',current_reading:'meter_unit_snapshot',net_operation_delta:'meter_unit_snapshot',fuel_consumed:'fuel_consumed_unit',chlorine_consumed:'chlorine_consumed_unit',quantity:'unit_snapshot',effective_fuel_rate:'fuel_rate_unit',effective_chlorine:'chlorine_consumed_unit'};
 const SUMMARY_UNITS={net_operation_delta:'net_operation_by_unit',fuel_consumed:'fuel_consumed_by_unit',chlorine_consumed:'chlorine_consumed_by_unit'};
-const FIXED_UNITS={water_total:'م³',distributed_quantity:'م³',network_quantity:'م³',trips_count:'نقلة',pump_capacity:'م³/ساعة'};
+const FIXED_UNITS={water_total:'م³',distributed_quantity:'م³',network_quantity:'م³',trips_count:'نقلة',pump_capacity:'م³/ساعة',residual_chlorine:'mg/l'};
 const ADDITIVE=new Set(['net_operation_delta','fuel_consumed','chlorine_consumed','water_total','trips_count','distributed_quantity','network_quantity']);
 export const TOTALS_NOTE='تُجمع المقاييس المتجانسة فقط؛ قراءات العدادات وتركيز الكلور والمعدلات لا تُجمع. كميات الحركات المختلفة مفصلة في الملخص.';
 export function reportUnit(value){

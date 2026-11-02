@@ -1,6 +1,7 @@
 import { reportCell, reportTotals, reportTotalLabelKey, TOTALS_NOTE } from '../domain/reportTableModel';
 import ReportExportDialog from '../components/ReportExportDialog';
 import DataResetPanel from '../components/DataResetPanel';
+import DeleteDynamicFieldDialog from '../components/DeleteDynamicFieldDialog';
 import { reportExportError } from '../domain/reportExportModel';
 import { tankerDistributions } from '../domain/workflowSettings';
 import TextField from '../components/AppTextField';
@@ -265,6 +266,7 @@ export default function EntityPage({ type }) {
     chlorine_unit: 'كجم',
   });
   const [fieldDialog, setFieldDialog] = useState(false);
+  const [fieldToDelete, setFieldToDelete] = useState(null);
   const [fieldForm, setFieldForm] = useState({
     id: '',
     category_id: '',
@@ -643,6 +645,7 @@ export default function EntityPage({ type }) {
                             {!f.is_active ? ' [معطل]' : ''}
                           </span>
                           {isAdmin && (
+                            <Stack direction="row" spacing={0.5}>
                             <IconButton aria-label={`تعديل الحقل ${f.label}`} title={`تعديل الحقل ${f.label}`}
                               size="small"
                               disabled={!canMutateAdmin}
@@ -658,6 +661,10 @@ export default function EntityPage({ type }) {
                             >
                               <EditRounded fontSize="small" />
                             </IconButton>
+                            <IconButton aria-label={`حذف الحقل ${f.label}`} title={`حذف الحقل ${f.label}`} color="error" size="small" disabled={!canMutateAdmin} onClick={()=>setFieldToDelete(f)}>
+                              <DeleteRounded fontSize="small" />
+                            </IconButton>
+                            </Stack>
                           )}
                         </Box>
                       ))}
@@ -800,6 +807,12 @@ export default function EntityPage({ type }) {
           </DialogActions>
         </Dialog>
 
+        {fieldToDelete&&<DeleteDynamicFieldDialog key={fieldToDelete.id} field={fieldToDelete} disabled={!canMutateAdmin}
+          counts={{assets:assetFieldValues.filter(v=>v.field_id===fieldToDelete.id).length,operations:operationLogValues.filter(v=>v.field_id===fieldToDelete.id).length,options:fieldOptions.filter(o=>o.field_id===fieldToDelete.id).length}}
+          onClose={()=>setFieldToDelete(null)} onDelete={async confirmation=>{
+            await service.deleteCategoryField(fieldToDelete.id,confirmation);
+            await refresh();setNotice({type:'success',text:'تم حذف الحقل وقيمه المرتبطة وحفظ نسخة في سجل التدقيق'});
+          }}/>}
         {/* Dynamic Field Dialog */}
         <Dialog open={fieldDialog} onClose={() => setFieldDialog(false)} fullWidth maxWidth="sm">
           <DialogTitle>
@@ -1287,7 +1300,7 @@ export default function EntityPage({ type }) {
               )}
               {formCat?.supports_chlorine && <>
                 <TextField required type="number" label={`استهلاك الكلور الافتراضي للأصل (${formCat.chlorine_unit || 'كجم'})`} value={assetForm.chlorine_consumption_override} inputProps={{min:0,step:'any'}} onChange={e=>setAssetForm({...assetForm,has_chlorine_consumption_override:true,chlorine_consumption_override:e.target.value})}/>
-                <TextField required type="number" label="الكلور المتبقي الافتراضي للأصل" value={assetForm.residual_chlorine_override} inputProps={{min:0,step:'any'}} onChange={e=>setAssetForm({...assetForm,has_residual_chlorine_override:true,residual_chlorine_override:e.target.value})}/>
+                <TextField required type="number" label="الكلور المتبقي الافتراضي للأصل (mg/l)" value={assetForm.residual_chlorine_override} inputProps={{min:0,step:'any'}} onChange={e=>setAssetForm({...assetForm,has_residual_chlorine_override:true,residual_chlorine_override:e.target.value})}/>
               </>}
               {ownDefaultError && <Alert severity="info">{ownDefaultError}</Alert>}
               <TextField
@@ -1827,7 +1840,7 @@ export default function EntityPage({ type }) {
                       fullWidth
                       size="small"
                       type="number"
-                      label="نسبة الكلور العالقة في المياه"
+                      label="الكلور المتبقي في المياه (mg/l)"
                       value={
                         opLogForm.residual_chlorine !== ''
                           ? opLogForm.residual_chlorine

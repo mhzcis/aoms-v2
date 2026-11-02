@@ -154,6 +154,14 @@ export class AomsService {
     });
   }
 
+  deleteCategoryField(id, confirmation) {
+    this.assertOnline();
+    if (confirmation !== 'حذف الحقل') throw new Error('عبارة تأكيد حذف الحقل غير صحيحة');
+    return typeof this.repo.deleteCategoryField === 'function'
+      ? this.repo.deleteCategoryField(id, confirmation)
+      : this.repo.invoke('delete_category_field', { p_id: id, p_confirmation: confirmation });
+  }
+
   createAsset(payload, values = {}) {
     this.assertOnline();
     if (typeof this.repo.createAsset === 'function') {

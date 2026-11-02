@@ -433,6 +433,25 @@ export class AomsEngine {
     return clone(savedField);
   }
 
+  async deleteCategoryField(id, confirmation) {
+    if (!this.online || !canAdmin(this.user)) throw new Error('حذف الحقول متاح لمدير النظام النشط المتصل فقط');
+    if (confirmation !== 'حذف الحقل') throw new Error('عبارة تأكيد حذف الحقل غير صحيحة');
+    const field = this.state.category_fields.find(f => f.id === id);
+    if (!field) throw new Error('الحقل غير موجود؛ حدّث الصفحة');
+    const operationValues = this.state.operation_log_values?.length ? this.state.operation_log_values : this.state.operation_log_field_values;
+    const snapshot = clone({field, options:this.state.category_field_options.filter(o=>o.field_id===id),
+      asset_values:this.state.asset_field_values.filter(v=>v.field_id===id), operation_values:operationValues.filter(v=>v.field_id===id)});
+    const result = {field_id:id,options:snapshot.options.length,asset_values:snapshot.asset_values.length,operation_values:snapshot.operation_values.length};
+    this.state.asset_field_values=this.state.asset_field_values.filter(v=>v.field_id!==id);
+    this.state.operation_log_values=this.state.operation_log_values.filter(v=>v.field_id!==id);
+    this.state.operation_log_field_values=this.state.operation_log_field_values.filter(v=>v.field_id!==id);
+    this.state.category_field_options=this.state.category_field_options.filter(o=>o.field_id!==id);
+    this.state.category_fields=this.state.category_fields.filter(f=>f.id!==id);
+    this.recordAudit('delete_category_field','category_fields',id,snapshot,result,'حذف الحقل وقيمه وخياراته بتأكيد مدير النظام');
+    this.notify();
+    return result;
+  }
+
   validateScopedDynamicValues(categoryId, scope, valuesMap = {}) {
     const fields = this.state.category_fields.filter(
       f =>
