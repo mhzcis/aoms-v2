@@ -25,6 +25,14 @@ try{
  await rpc(a,'create_asset',{category_id:c2.id,name:'fuel asset',fuel_type_id:ft.id},{});
  await check('used fuel unit is locked in native PostgreSQL',()=>rejects(()=>a.query("update public.fuel_types set unit='جالون' where id=$1",[ft.id])));
  await check('operator cannot invoke either reset RPC',async()=>{await rejects(()=>rpc(b,'aoms_reset_preview'));await rejects(()=>rpc(b,'reset_aoms_data','مسح شامل','x'));});
+ const deletionField=await one(a,"insert into public.category_fields(category_id,scope,field_key,label,field_type,has_historical_values) values($1,'asset','delete_native','delete native','text',true) returning *",[cat.id]);
+ await su.query("insert into public.asset_field_values(asset_id,field_id,value_text) values($1,$2,'historical')",[asset.id,deletionField.id]);
+ await check('operator cannot invoke historical field deletion',async()=>{await rejects(()=>rpc(b,'delete_category_field',deletionField.id,'حذف الحقل'));assert.equal((await one(a,'select count(*)::int n from public.category_fields where id=$1',[deletionField.id])).n,1);});
+ await check('field deletion blocks concurrent value writers; rollback preserves the field and value',async()=>{
+  await a.query('begin');try{await rpc(a,'delete_category_field',deletionField.id,'حذف الحقل');await su.query("set lock_timeout='75ms'");const error=await rejects(()=>su.query("insert into public.asset_field_values(asset_id,field_id,value_text) values($1,$2,'concurrent')",[asset.id,deletionField.id]));assert.match(error.message,/lock timeout/);}finally{await a.query('rollback');await su.query("set lock_timeout='0'");}
+  assert.equal((await one(a,'select value_text from public.asset_field_values where field_id=$1',[deletionField.id])).value_text,'historical');
+ });
+ await check('confirmed native field deletion retains core assets and the full audit snapshot',async()=>{const result=await rpc(a,'delete_category_field',deletionField.id,'حذف الحقل');assert.equal(result.asset_values,1);assert.equal((await one(a,'select count(*)::int n from public.assets')).n,2);const audit=await one(a,"select before_json from public.audit_logs where action='delete_category_field' and entity_id=$1",[deletionField.id]);assert.equal(audit.before_json.asset_values[0].value_text,'historical');});
  await check('repair is idempotent and preserves function identities, ACLs and settings',async()=>{
   const catalog=()=>one(su,"select jsonb_agg(jsonb_build_object('oid',oid,'owner',proowner,'acl',proacl,'config',proconfig,'definition',pg_get_functiondef(oid)) order by oid) functions from pg_proc where oid in ('public.reset_aoms_data(text,text)'::regprocedure,'public.restore_aoms_backup(jsonb)'::regprocedure)");
   const before=await catalog();await su.query(fs.readFileSync(new URL('../migrations/20261101120240_safeupdate_reset_restore.sql',import.meta.url),'utf8'));assert.deepEqual(await catalog(),before);
