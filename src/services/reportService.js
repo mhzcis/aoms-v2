@@ -1,7 +1,8 @@
 import { niceDate, stamp } from '../utils/dates';
 import { RECORD_TYPES } from '../data/defaultData';
 import { roundHours, sortLogs } from '../utils/calculations';
-import { attachTajawalFonts, tajawalFontFaceCss } from '../fonts';
+import { attachReportFonts, reportFontFaceCss, REPORT_FONT, REPORT_FONT_STACK } from '../assets/fonts/reportFontData';
+export { REPORT_FONT_STACK };
 
 const labels = {
   date: 'التاريخ',
@@ -89,19 +90,19 @@ export const summarizeReportData = data => {
   };
 };
 
-// هوية لونية حديثة لتقارير Excel (متوافقة مع الهوية البصرية الزمردية والكهرمانية للتطبيق)
+// أزرق مؤسسي مستوحى من هوية الأونروا؛ أزرق داكن للرؤوس لضمان التباين.
 const XL = {
-  primary: 'FF0F766E',
-  dark: 'FF115E59',
-  accent: 'FFF59E0B',
-  metaFill: 'FFECFDF5',
+  primary: 'FF006F9E',
+  dark: 'FF006F9E',
+  accent: 'FF009EDB',
+  metaFill: 'FFEDF7FC',
   metaCountFill: 'FFE0F2FE',
   metaFilterFill: 'FFFEF3C7',
   zebra: 'FFF4F7FB',
-  hoursFill: 'FFF0FDFA',
-  hoursText: 'FF0F766E',
-  dailyFill: 'FFDCFCE7',
-  dailyText: 'FF166534',
+  hoursFill: 'FFEDF7FC',
+  hoursText: 'FF006F9E',
+  dailyFill: 'FFE0F2FE',
+  dailyText: 'FF075985',
   resetFill: 'FFFEF3C7',
   resetText: 'FFB45309',
   border: 'FFCBD5E1',
@@ -127,9 +128,9 @@ const cellValue = (r, c) => {
 
 const displayLength = (r, c) => (c === 'date' ? 10 : String(r[c] ?? '').length);
 
-// الخط العربي العصري المعتمد في الهوية الجديدة للتطبيق والتقارير
-export const EXCEL_FONT = 'Tajawal';
-export const REPORT_FONT_STACK = '"Tajawal", "Cairo", "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif';
+// خط نسخ عربي رسمي موحد للتقارير.
+export const EXCEL_FONT = REPORT_FONT;
+
 export const EXCEL_SHEET_NAME = 'تقرير التشغيل';
 export const EXCEL_HEADER_ROW = 5;
 
@@ -325,7 +326,7 @@ export function buildPrintableReportHTML(
 
               if (c === 'recordTypeLabel') {
                 const isReset = r.recordType === 'meterReset' || rawVal === 'تغيير عداد';
-                const badgeClass = isReset ? 'badge badge-amber' : 'badge badge-teal';
+                const badgeClass = isReset ? 'badge badge-amber' : 'badge badge-blue';
                 return `<td class="center"><span class="${badgeClass}">${safeVal}</span></td>`;
               }
               if (c === 'operatingHours') {
@@ -367,7 +368,7 @@ export function buildPrintableReportHTML(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${safeTitle}</title>
   <style>
-    ${embedFonts ? tajawalFontFaceCss() : ''}
+    ${embedFonts ? reportFontFaceCss() : ''}
     @page {
       size: A4 ${orientation};
       margin: 12mm;
@@ -424,7 +425,7 @@ export function buildPrintableReportHTML(
       cursor: pointer;
     }
     .btn-primary {
-      background: #0f766e;
+      background: #006f9e;
       color: #ffffff;
     }
     .btn-outline {
@@ -433,11 +434,11 @@ export function buildPrintableReportHTML(
       border: 1px solid #cbd5e1;
     }
     .header-banner {
-      background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+      background: linear-gradient(135deg, #006f9e 0%, #006f9e 100%);
       color: #ffffff;
       padding: 22px 26px;
       border-radius: 14px;
-      border-bottom: 4px solid #f59e0b;
+      border-bottom: 4px solid #009edb;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -453,7 +454,7 @@ export function buildPrintableReportHTML(
     .header-sub {
       margin-top: 4px;
       font-size: 13px;
-      color: #ccfbf1;
+      color: #e0f2fe;
       font-weight: 500;
     }
     .header-meta {
@@ -473,12 +474,12 @@ export function buildPrintableReportHTML(
     .kpi-card {
       background: #f8fafc;
       border: 1px solid #e2e8f0;
-      border-top: 3px solid #0f766e;
+      border-top: 3px solid #006f9e;
       border-radius: 12px;
       padding: 12px 16px;
     }
     .kpi-card.amber {
-      border-top-color: #f59e0b;
+      border-top-color: #009edb;
     }
     .kpi-label {
       font-size: 12px;
@@ -494,13 +495,13 @@ export function buildPrintableReportHTML(
     }
     .filter-banner {
       margin-top: 14px;
-      background: #f0fdfa;
-      border: 1px solid #99f6e4;
-      border-right: 5px solid #0f766e;
+      background: #edf7fc;
+      border: 1px solid #bae6fd;
+      border-right: 5px solid #006f9e;
       padding: 10px 16px;
       border-radius: 10px;
       font-size: 13px;
-      color: #134e4a;
+      color: #075985;
     }
     .filter-banner strong {
       font-weight: 800;
@@ -518,12 +519,12 @@ export function buildPrintableReportHTML(
       page-break-inside: avoid;
     }
     th {
-      background: #115e59;
+      background: #006f9e;
       color: #ffffff;
       font-weight: 800;
       padding: 11px 10px;
-      border: 1px solid #0f766e;
-      border-bottom: 3px solid #f59e0b;
+      border: 1px solid #006f9e;
+      border-bottom: 3px solid #009edb;
       text-align: center;
       white-space: nowrap;
     }
@@ -551,8 +552,8 @@ export function buildPrintableReportHTML(
     }
     .hours-cell {
       font-weight: 800;
-      color: #0f766e;
-      background: #f0fdfa !important;
+      color: #006f9e;
+      background: #edf7fc !important;
     }
     .badge {
       display: inline-block;
@@ -562,10 +563,10 @@ export function buildPrintableReportHTML(
       font-weight: 700;
       white-space: nowrap;
     }
-    .badge-teal {
-      background: #dcfce7;
-      color: #166534;
-      border: 1px solid #86efac;
+    .badge-blue {
+      background: #e0f2fe;
+      color: #075985;
+      border: 1px solid #7dd3fc;
     }
     .badge-amber {
       background: #fef3c7;
@@ -573,16 +574,16 @@ export function buildPrintableReportHTML(
       border: 1px solid #fcd34d;
     }
     .total-row td {
-      background: #ecfdf5 !important;
+      background: #edf7fc !important;
       font-weight: 800;
-      border-top: 2px solid #0f766e;
+      border-top: 2px solid #006f9e;
       padding: 10px;
     }
     .total-label {
-      color: #0f766e;
+      color: #006f9e;
     }
     .total-value {
-      color: #0f766e;
+      color: #006f9e;
       font-size: 14px;
     }
     .empty-row {
@@ -782,9 +783,9 @@ export function exportPDF(
   if (win && win.document) {
     win.document.write(html);
     win.document.close();
-    // انتظار تحميل خط Tajawal المحلي (بحد أقصى 1.5 ثانية) قبل فتح نافذة الطباعة.
+    // انتظار تحميل خط Noto Naskh Arabic المحلي (بحد أقصى 1.5 ثانية) قبل فتح نافذة الطباعة.
     Promise.race([
-      attachTajawalFonts(win).then(() => win.document.fonts?.ready),
+      attachReportFonts(win).then(() => win.document.fonts?.ready),
       new Promise(r => setTimeout(r, 1500)),
     ])
       .catch(() => {})
@@ -818,7 +819,7 @@ export function exportPDF(
     doc.open();
     doc.write(html);
     doc.close();
-    attachTajawalFonts(iframe.contentWindow).catch(() => {});
+    attachReportFonts(iframe.contentWindow).catch(() => {});
     setTimeout(() => {
       try {
         iframe.contentWindow?.focus();

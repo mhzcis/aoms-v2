@@ -97,7 +97,7 @@ describe('التقارير وExcel وPDF وCSV والأمان', () => {
     expect(ws.getRow(EXCEL_HEADER_ROW).cellCount).toBe(4);
   });
 
-  it('ورقة Excel باتجاه RTL ومنسقة بالخط الجديد (Tajawal) وألوان حديثة وتنسيق شرطي وتجميد وطباعة', async () => {
+  it('ورقة Excel باتجاه RTL ومنسقة بالخط الجديد (Noto Naskh Arabic) وألوان حديثة وتنسيق شرطي وتجميد وطباعة', async () => {
     const all = enrich(filterLogs(logs, generators, init), generators);
     const cols = Object.keys(reportLabels);
     const ws = (
@@ -114,11 +114,11 @@ describe('التقارير وExcel وPDF وCSV والأمان', () => {
       expect.arrayContaining(['A1:J1', 'A2:J2', 'A3:J3', 'A4:J4'])
     );
     expect(ws.getCell('A1').font).toMatchObject({ bold: true, size: 18 });
-    expect(ws.getCell('A1').fill.fgColor.argb).toBe('FF0F766E');
+    expect(ws.getCell('A1').fill.fgColor.argb).toBe('FF006F9E');
     expect(String(ws.autoFilter)).toBe('A5:J5');
     const head = ws.getCell(`A${EXCEL_HEADER_ROW}`);
     expect(head.font.bold).toBe(true);
-    expect(head.fill.fgColor.argb).toBe('FF115E59');
+    expect(head.fill.fgColor.argb).toBe('FF006F9E');
     const first = ws.getRow(EXCEL_HEADER_ROW + 1);
     expect(first.getCell(1).value).toBeInstanceOf(Date);
     expect(first.getCell(1).numFmt).toBe('dd/mm/yyyy');
@@ -137,20 +137,20 @@ describe('التقارير وExcel وPDF وCSV والأمان', () => {
       printTitlesRow: '5:5',
       paperSize: 9,
     });
-    expect(EXCEL_FONT).toBe('Tajawal');
+    expect(EXCEL_FONT).toBe('Noto Naskh Arabic');
     const fonts = new Set();
     ws.eachRow(row => row.eachCell(c => fonts.add(c.font?.name)));
-    expect([...fonts]).toEqual(['Tajawal']);
+    expect([...fonts]).toEqual(['Noto Naskh Arabic']);
   });
 
   it('تقرير PDF / الطباعة يلتزم بالفلاتر والأعمدة المختارة ويستخدم الخطوط الجديدة والتنسيق الملون', () => {
     const fText = describeFilters(filters, generators);
     const html = buildPrintableReportHTML(filtered, columns, { filtersText: fText });
-    expect(html).toContain('Tajawal');
-    expect(html).toContain('Cairo');
-    // خط Tajawal مستضاف ذاتيًا (لا CDN) ليعمل دون اتصال
-    expect(html).toContain("@font-face{font-family:'Tajawal'");
-    expect(html).toMatch(/tajawal-arabic-400-normal[^)]*\.woff2/);
+    expect(html).toContain('Noto Naskh Arabic');
+    expect(html).toContain('Traditional Arabic');
+    // خط Noto Naskh Arabic مستضاف ذاتيًا (لا CDN) ليعمل دون اتصال
+    expect(html).toContain("@font-face{font-family:'Noto Naskh Arabic'");
+    expect(html).toMatch(/NotoNaskhArabic-Regular[^)]*\.ttf/);
     expect(html).not.toContain('fonts.googleapis.com');
     expect(html).toContain(fText);
     expect(html).toContain('1490.5 ساعة');

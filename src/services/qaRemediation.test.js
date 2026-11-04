@@ -83,7 +83,7 @@ describe('approved QA regression: reports F01/F05/F06/F10/F11', () => {
       ...options, didDrawCell: data => cells.push({ x: data.cell.x, width: data.cell.width, text: data.cell.text.join(' '), section: data.section, halign:data.cell.styles.halign,valign:data.cell.styles.valign }),
     }));
     try {
-      const fonts = Object.fromEntries(['Regular', 'Bold'].map(style => [`amiri${style}`, readFileSync(`public/fonts/Amiri-${style}.ttf`).toString('base64')]));
+      const fonts = Object.fromEntries(['Regular', 'Bold'].map(style => [style.toLowerCase(), readFileSync(`src/assets/fonts/NotoNaskhArabic-${style}.ttf`).toString('base64')]));
       const report = buildAomsReport(state, { eventType: 'all' });
       const doc = await exportAomsPDF(report, undefined, undefined, fonts);
       expect(doc.getNumberOfPages()).toBeGreaterThan(1);

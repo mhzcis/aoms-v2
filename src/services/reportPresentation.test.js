@@ -30,8 +30,8 @@ describe('November report presentation',()=>{
  it('native XLSX styles stop at the table, center every cell, and include cached SUBTOTALs',async()=>{
   const p=ready(),wb=await writeExcel(p,'تقرير المضخات');const copy=new ExcelJS.Workbook();const bytes=await wb.xlsx.writeBuffer();await copy.xlsx.load(bytes);const ws=copy.getWorksheet('التفاصيل'),n=p.columns.length,last=ws.getRow(3);
   expect(ws.rowCount).toBe(3);expect(last.getCell(1).value).toBe('الإجمالي');const fuel=p.columns.findIndex(c=>c.key==='fuel_consumed')+1;expect(last.getCell(fuel).value).toEqual({formula:`SUBTOTAL(109,${ws.getColumn(fuel).letter}2:${ws.getColumn(fuel).letter}2)`,result:96});
-  for(let row=1;row<=3;row++)for(let col=1;col<=n;col++){const cell=ws.getCell(row,col);expect(cell.alignment.horizontal).toBe('center');expect(cell.alignment.vertical).toBe('middle');}
-  expect(ws.getRow(1).fill).toBeUndefined();expect(ws.getCell(1,n+1).fill).toBeUndefined();expect(last.getCell(n).fill.fgColor.argb).toBe('FF115E59');expect(ws.pageSetup.printArea).toContain('3');
+  for(let row=1;row<=3;row++)for(let col=1;col<=n;col++){const cell=ws.getCell(row,col);expect(cell.font.name).toBe('Noto Naskh Arabic');expect(cell.alignment.horizontal).toBe('center');expect(cell.alignment.vertical).toBe('middle');}
+  expect(ws.getRow(1).fill).toBeUndefined();expect(ws.getCell(1,n+1).fill).toBeUndefined();expect(last.getCell(n).fill.fgColor.argb).toBe('FF006F9E');expect(ws.pageSetup.printArea).toContain('3');
   const zip=await JSZip.loadAsync(bytes),xml=await zip.file('xl/worksheets/sheet2.xml').async('string');expect(xml).not.toMatch(/<row[^>]*\ss="/);expect(xml).not.toContain('customFormat=');expect(xml).not.toContain('16384');
   const summary=copy.getWorksheet('الملخص');expect(summary.columnCount).toBe(2);expect(summary.getCell('C1').fill).toBeUndefined();
  });
