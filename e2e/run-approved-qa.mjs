@@ -40,8 +40,8 @@ try {
     for(const name of ['صافي التشغيل (ساعة)','الوقود المستهلك (لتر)','الكلور المستهلك (كجم)'])await page.getByRole('columnheader',{name,exact:true}).waitFor();
     for(const name of ['الوحدة','وحدة استهلاك الوقود','وحدة استهلاك الكلور'])assert.equal(await page.getByRole('columnheader',{name,exact:true}).count(),0);
     const total=page.getByTestId('report-totals');assert.ok((await total.innerText()).includes('الإجمالي'));
-    const appearance=await total.locator('td').first().evaluate(c=>({align:getComputedStyle(c).textAlign,vertical:getComputedStyle(c).verticalAlign,background:getComputedStyle(c).backgroundColor}));
-    assert.equal(appearance.align,'center');assert.equal(appearance.vertical,'middle');assert.equal(appearance.background,'rgb(17, 94, 89)');
+    const appearance=await total.locator('td').first().evaluate(c=>({align:getComputedStyle(c).textAlign,vertical:getComputedStyle(c).verticalAlign,background:getComputedStyle(c).backgroundColor,font:getComputedStyle(c).fontFamily}));
+    assert.equal(appearance.align,'center');assert.equal(appearance.vertical,'middle');assert.equal(appearance.background,'rgb(0, 111, 158)');assert.ok(appearance.font.includes('Noto Naskh Arabic'));await page.evaluate(()=>document.fonts.load('16px "Noto Naskh Arabic"','التقارير'));assert.equal(await page.evaluate(()=>document.fonts.check('16px "Noto Naskh Arabic"','التقارير')),true);
     await page.getByRole('button',{name:'تصدير Excel',exact:true}).click();await page.getByRole('dialog').getByRole('checkbox',{name:'الوقود المستهلك (لتر)',exact:true}).waitFor();assert.deepEqual(errors,[]);await context.close();
   });
   await check('reports: missing scope disables all exports and displays the reason', async () => {

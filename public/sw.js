@@ -2,7 +2,7 @@
    - index.html (التنقل): الشبكة أولًا ثم النسخة المخزنة عند انقطاع الاتصال.
    - الأصول المبنية (assets/ ذات الأسماء المجزأة) والأيقونات: من الذاكرة المؤقتة أولًا.
    - النطاق: مجلد هذا الملف (./) فيعمل تحت /generator-operation-tracker/. */
-const VERSION = 'v2.0.0';
+const VERSION = 'v2.0.0-reports-blue-naskh-20261104';
 const CACHE = `aoms-v2-fp1-${VERSION}`;
 const SCOPE = new URL('./', self.location).href;
 const INDEX = new URL('./index.html', SCOPE).href;
@@ -19,11 +19,11 @@ const assetUrls = async () => {
     // الأجزاء المحمّلة عند الطلب (مثل مكتبة Excel) تُذكر داخل ملف JS الرئيسي بمسار نسبي.
     for (const u of [...urls].filter(x => x.endsWith('.js'))) {
       const js = await (await fetch(u)).text();
-      for (const m of js.matchAll(/["'`]\.\/([\w.-]+\.(?:js|css|woff2))["'`]/g)) if (m[1] !== 'sw.js') urls.add(new URL(m[1], u).href);
+      for (const m of js.matchAll(/["'`]\.\/([\w.-]+\.(?:js|css|woff2|ttf))["'`]/g)) if (m[1] !== 'sw.js') urls.add(new URL(m[1], u).href);
     }
     for (const u of [...urls].filter(x => x.endsWith('.css'))) {
       const css = await (await fetch(u)).text();
-      for (const m of css.matchAll(/url\(["']?([^"')]+\.woff2)["']?\)/g)) urls.add(new URL(m[1], u).href);
+      for (const m of css.matchAll(/url\(["']?([^"')]+\.(?:woff2|ttf))["']?\)/g)) urls.add(new URL(m[1], u).href);
     }
   } catch {}
   return [...urls];
