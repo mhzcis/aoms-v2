@@ -336,10 +336,11 @@ export default function AppShell({ mode = 'light', setMode }) {
             <Typography
               sx={{
                 fontWeight: 800,
-                fontSize: { xs: '0.95rem', sm: '1.1rem', md: '1.2rem' },
-                whiteSpace: 'nowrap',
+                fontSize: { xs: '0.85rem', sm: '1.1rem', md: '1.2rem' },
+                lineHeight: { xs: 1.3, sm: 1.5 },
+                whiteSpace: { xs: 'normal', sm: 'nowrap' },
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                textOverflow: { xs: 'clip', sm: 'ellipsis' },
               }}
             >
               نظام إدارة وتشغيل الأصول والمعدات
