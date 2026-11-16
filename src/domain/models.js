@@ -94,6 +94,28 @@ export const effectiveValue = (asset, category, key) => {
   );
 };
 
+// Residual chlorine default for a new operation log: asset card override, else category default.
+export const defaultResidualChlorine = (asset, category) => {
+  const value = effectiveValue(asset, category, 'residual_chlorine');
+  return value === null || value === undefined || value === '' ? '' : value;
+};
+
+export const newOperationLogForm = (asset = null, category = null) => ({
+  id: '',
+  version: 1,
+  operation_date: '',
+  record_type: 'daily',
+  operator_id: '',
+  previous_reading: '',
+  current_reading: '',
+  chlorine_consumed: '',
+  residual_chlorine: defaultResidualChlorine(asset, category),
+  tanker_id: null,
+  trips_count: '',
+  distributed_quantity: '',
+  notes: '',
+});
+
 export const isValidCalendarDate = str => {
   if (typeof str !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
   const [y, m, d] = str.split('-').map(Number);

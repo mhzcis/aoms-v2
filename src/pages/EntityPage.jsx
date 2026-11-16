@@ -85,6 +85,7 @@ import {
   canAdmin,
   canWrite,
   CHLORINE_TX_TYPES,
+  defaultResidualChlorine,
   effectiveValue,
   FIELD_SCOPES,
   FIELD_TYPES,
@@ -92,6 +93,7 @@ import {
   getOperationDateRule,
   localTodayISO,
   METER_UNITS,
+  newOperationLogForm,
   ROLES,
   roundNum,
 } from '../domain/models';
@@ -352,22 +354,30 @@ export default function EntityPage({ type }) {
 
   const [selectedCatId, setSelectedCatId] = useState('');
   const [selectedAssetId, setSelectedAssetId] = useState('');
-  const [opLogForm, setOpLogForm] = useState({
-    id: '',
-    version: 1,
-    operation_date: '',
-    record_type: 'daily',
-    operator_id: '',
-    previous_reading: '',
-    current_reading: '',
-    chlorine_consumed: '',
-    residual_chlorine: '',
-    tanker_id: null,
-    trips_count: '',
-    distributed_quantity: '',
-    notes: '',
-  });
+  const [opLogForm, setOpLogForm] = useState(() => newOperationLogForm());
   const [opDynValues, setOpDynValues] = useState({});
+
+  const residualForAssetId = assetId => {
+    const asset = assets.find(a => a.id === assetId) || null;
+    const category = categories.find(c => c.id === asset?.category_id) || null;
+    return defaultResidualChlorine(asset, category);
+  };
+
+  const resetOpLogForm = (assetId = selectedAssetId) => {
+    const asset = assets.find(a => a.id === assetId) || null;
+    const category = categories.find(c => c.id === asset?.category_id) || null;
+    setOpLogForm(newOperationLogForm(asset, category));
+    setOpDynValues({});
+  };
+
+  const prevSelectedAssetIdRef = useRef(selectedAssetId);
+  useEffect(() => {
+    if (type !== 'operation_logs') return;
+    if (prevSelectedAssetIdRef.current === selectedAssetId) return;
+    prevSelectedAssetIdRef.current = selectedAssetId;
+    const next = residualForAssetId(selectedAssetId);
+    setOpLogForm(f => (f.id ? f : { ...f, residual_chlorine: next }));
+  }, [type, selectedAssetId]);
 
   useEffect(() => {
     if (type !== 'operation_logs') return;
@@ -1925,22 +1935,7 @@ export default function EntityPage({ type }) {
                           ); },
                         opLogForm.id ? 'تم تحديث سجل التشغيل' : 'تم حفظ سجل التشغيل'
                       );
-                      setOpLogForm({
-                        id: '',
-                        version: 1,
-                        operation_date: '',
-                        record_type: 'daily',
-                        operator_id: '',
-                        previous_reading: '',
-                        current_reading: '',
-                        chlorine_consumed: '',
-                        residual_chlorine: '',
-                        tanker_id: null,
-                        trips_count: '',
-                        distributed_quantity: '',
-                        notes: '',
-                      });
-                      setOpDynValues({});
+                      resetOpLogForm();
                     }}
                   >
                     {opLogForm.id ? 'تحديث آخر سجل' : 'حفظ سجل التشغيل'}
@@ -1948,22 +1943,7 @@ export default function EntityPage({ type }) {
                   {opLogForm.id && (
                     <Button
                       onClick={() => {
-                        setOpLogForm({
-                          id: '',
-                          version: 1,
-                          operation_date: '',
-                          record_type: 'daily',
-                          operator_id: '',
-                          previous_reading: '',
-                          current_reading: '',
-                          chlorine_consumed: '',
-                          residual_chlorine: '',
-                          tanker_id: null,
-                          trips_count: '',
-                          distributed_quantity: '',
-                          notes: '',
-                        });
-                        setOpDynValues({});
+                        resetOpLogForm();
                       }}
                     >
                       إلغاء التعديل
@@ -2588,10 +2568,10 @@ export default function EntityPage({ type }) {
                             color="error"
                             disabled={!canMutateOperate}
                             onClick={() =>
-                              executeWithConflictGuard(
-                                () => service.deleteChlorine(tx.id, tx.version),
-                                'تم حذف آخر حركة كلور'
-                              )
+                              setConfirmDelete({
+                                message: 'هل تريد حذف آخر حركة كلور؟ لا يمكن التراجع عن هذه العملية.',
+                                run: () => executeWithConflictGuard(() => service.deleteChlorine(tx.id, tx.version), 'تم حذف آخر حركة كلور'),
+                              })
                             }
                           >
                             <DeleteRounded fontSize="small" />
@@ -2608,6 +2588,7 @@ export default function EntityPage({ type }) {
           </Table>
         </TableContainer>
         <PagedFooter paged={chlPage} testId="paging-chlorine" />
+        {deleteConfirmDialog}
       </>
     );
   }

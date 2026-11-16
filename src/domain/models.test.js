@@ -4,7 +4,9 @@ import {
   calculateFuelBalance,
   canAdmin,
   canWrite,
+  defaultResidualChlorine,
   effectiveValue,
+  newOperationLogForm,
   normalizePrefix,
   validateCategoryInput,
   validateDynamicFieldDef,
@@ -48,6 +50,33 @@ describe('AOMS V2 Domain & Transactional Engine', () => {
     expect(canWrite('operator')).toBe(true);
     expect(canWrite('viewer')).toBe(false);
     expect(canAdmin('admin')).toBe(true);
+  });
+
+  it('يملأ سجل التشغيل الجديد بالكلور المتبقي الافتراضي من بطاقة الأصل ثم التصنيف', () => {
+    expect(
+      defaultResidualChlorine(
+        { has_residual_chlorine_override: true, residual_chlorine_override: 0.5 },
+        { default_residual_chlorine: 0.2 }
+      )
+    ).toBe(0.5);
+    expect(
+      defaultResidualChlorine(
+        { has_residual_chlorine_override: true, residual_chlorine_override: 0 },
+        { default_residual_chlorine: 0.2 }
+      )
+    ).toBe(0);
+    expect(
+      defaultResidualChlorine({ has_residual_chlorine_override: false }, { default_residual_chlorine: 0.2 })
+    ).toBe(0.2);
+    expect(defaultResidualChlorine(null, null)).toBe('');
+    const form = newOperationLogForm(
+      { has_residual_chlorine_override: true, residual_chlorine_override: 0.5 },
+      { default_residual_chlorine: 0.2 }
+    );
+    expect(form.id).toBe('');
+    expect(form.residual_chlorine).toBe(0.5);
+    expect(form.chlorine_consumed).toBe('');
+    expect(newOperationLogForm().residual_chlorine).toBe('');
   });
 
   it('ينفذ دورة حياة كاملة للتصنيفات والأصول والتشغيل والوقود والكلور والاستعادة الذرية', async () => {
