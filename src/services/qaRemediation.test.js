@@ -76,6 +76,16 @@ describe('approved QA regression: reports F01/F05/F06/F10/F11', () => {
     copy.operation_logs.push({ id: 'second', asset_id: 'a', fuel_type_id: 'g', operation_date: '2026-10-29', fuel_consumed: 3 });
     expect(buildAomsReport(copy).summary.fuel_consumed_by_unit).toEqual({ لتر: 12, جالون: 3 });
   });
+  it('fuel summary uses the exact sum of row values (no per-step 2-decimal rounding drift)', () => {
+    const copy = structuredClone(state);
+    const base = copy.operation_logs.find(l => Number(l.fuel_consumed));
+    copy.operation_logs = [1, 2, 3, 4].map(i => ({ ...base, id: `drift${i}`, operation_date: `2026-10-2${i}`, fuel_consumed: 50.625 }));
+    const r = buildAomsReport(copy);
+    const rowSum = r.rows.reduce((s, x) => s + Number(x.fuel_consumed || 0), 0);
+    expect(rowSum).toBe(202.5);
+    expect(r.summary.fuel_consumed_total).toBe(202.5);
+    expect(r.summary.fuel_consumed_by_unit).toEqual({ لتر: 202.5 });
+  });
   it('wide Arabic PDF paginates without clipping and preserves every column and record', async () => {
     const cells = [];
     const actual = (await vi.importActual('jspdf-autotable')).default;

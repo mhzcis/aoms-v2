@@ -250,6 +250,29 @@ export default function EntityPage({ type }) {
     } finally { mutationLock.current = false; setSaving(false); }
   };
 
+  // Confirmation before deleting the latest operation log / fuel transaction.
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const deleteConfirmDialog = (
+    <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth>
+      <DialogTitle>تأكيد الحذف</DialogTitle>
+      <DialogContent>{confirmDelete?.message}</DialogContent>
+      <DialogActions>
+        <Button onClick={() => setConfirmDelete(null)}>إلغاء</Button>
+        <Button
+          color="error"
+          variant="contained"
+          onClick={() => {
+            const run = confirmDelete?.run;
+            setConfirmDelete(null);
+            run?.();
+          }}
+        >
+          حذف
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+
   // ==================== 1. CATEGORIES & DYNAMIC FIELDS ====================
   const [catDialog, setCatDialog] = useState(false);
   const [catForm, setCatForm] = useState({
@@ -2044,10 +2067,10 @@ export default function EntityPage({ type }) {
                             color="error"
                             disabled={!canMutateOperate}
                             onClick={() =>
-                              executeWithConflictGuard(
-                                () => service.deleteOperation(l.id, l.version),
-                                'تم حذف آخر سجل تشغيل'
-                              )
+                              setConfirmDelete({
+                                message: 'هل تريد حذف آخر سجل تشغيل؟ لا يمكن التراجع عن هذه العملية.',
+                                run: () => executeWithConflictGuard(() => service.deleteOperation(l.id, l.version), 'تم حذف آخر سجل تشغيل'),
+                              })
                             }
                           >
                             <DeleteRounded fontSize="small" />
@@ -2066,6 +2089,7 @@ export default function EntityPage({ type }) {
           </Table>
         </TableContainer>
         <PagedFooter paged={logsPage} testId="paging-operation-logs" />
+        {deleteConfirmDialog}
       </>
     );
   }
@@ -2325,10 +2349,10 @@ export default function EntityPage({ type }) {
                             color="error"
                             disabled={!canMutateOperate}
                             onClick={() =>
-                              executeWithConflictGuard(
-                                () => service.deleteFuel(tx.id, tx.version),
-                                'تم حذف آخر حركة وقود'
-                              )
+                              setConfirmDelete({
+                                message: 'هل تريد حذف آخر حركة وقود؟ لا يمكن التراجع عن هذه العملية.',
+                                run: () => executeWithConflictGuard(() => service.deleteFuel(tx.id, tx.version), 'تم حذف آخر حركة وقود'),
+                              })
                             }
                           >
                             <DeleteRounded fontSize="small" />
@@ -2345,6 +2369,7 @@ export default function EntityPage({ type }) {
           </Table>
         </TableContainer>
         <PagedFooter paged={fuelPage} testId="paging-fuel" />
+        {deleteConfirmDialog}
       </>
     );
   }

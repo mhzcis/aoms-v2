@@ -2222,6 +2222,9 @@ export function buildAomsReport(state, filters = {}) {
     });
   }
 
+  // Exact running sums (rounded once at 6 decimals, like the report table totals); rounding
+  // every step to 2 decimals drifted on 3-decimal values such as 50.625 L.
+  const exactSum = value => Math.round(Number(value || 0) * 1e6) / 1e6;
   const netByUnit = {};
   let fuelTotal = 0;
   const fuelByUnit = {};
@@ -2233,17 +2236,17 @@ export function buildAomsReport(state, filters = {}) {
 
   if (type === 'operations') {
     for (const r of rows) {
-      waterTotal = roundNum(waterTotal + Number(r.water_total || 0));
-      waterDistributed = roundNum(waterDistributed + Number(r.distributed_quantity || 0));
-      waterNetwork = roundNum(waterNetwork + Number(r.network_quantity || 0));
+      waterTotal = exactSum(waterTotal + Number(r.water_total || 0));
+      waterDistributed = exactSum(waterDistributed + Number(r.distributed_quantity || 0));
+      waterNetwork = exactSum(waterNetwork + Number(r.network_quantity || 0));
       const unit = r.meter_unit_snapshot || 'بلا عداد';
-      netByUnit[unit] = roundNum((netByUnit[unit] || 0) + Number(r.net_operation_delta || 0));
-      fuelTotal = roundNum(fuelTotal + Number(r.fuel_consumed || 0));
-      if (Number(r.fuel_consumed || 0)) fuelByUnit[r.fuel_consumed_unit] = roundNum((fuelByUnit[r.fuel_consumed_unit] || 0) + Number(r.fuel_consumed));
-      chlorineTotal = roundNum(chlorineTotal + Number(r.chlorine_consumed || 0));
+      netByUnit[unit] = exactSum((netByUnit[unit] || 0) + Number(r.net_operation_delta || 0));
+      fuelTotal = exactSum(fuelTotal + Number(r.fuel_consumed || 0));
+      if (Number(r.fuel_consumed || 0)) fuelByUnit[r.fuel_consumed_unit] = exactSum((fuelByUnit[r.fuel_consumed_unit] || 0) + Number(r.fuel_consumed));
+      chlorineTotal = exactSum(chlorineTotal + Number(r.chlorine_consumed || 0));
       if (Number(r.chlorine_consumed || 0)) {
         const cu = catById.get(r.category_id)?.chlorine_unit || 'كجم';
-        chlorineByUnit[cu] = roundNum((chlorineByUnit[cu] || 0) + Number(r.chlorine_consumed));
+        chlorineByUnit[cu] = exactSum((chlorineByUnit[cu] || 0) + Number(r.chlorine_consumed));
       }
     }
   }
